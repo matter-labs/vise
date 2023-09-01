@@ -123,6 +123,15 @@ rocksdb_total_data_size_bytes{db="merkle_tree",cf="default"} 130000000
 rocksdb_total_data_size_bytes{db="merkle_tree",cf="stale_keys"} 130000
 ```
 
+## License
+
+Distributed under the terms of either
+
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
 [prometheus]: https://prometheus.io/docs/introduction/overview/
 [grafana]: https://grafana.com/docs/grafana/latest/
 [rocksdb]: https://rocksdb.org/
