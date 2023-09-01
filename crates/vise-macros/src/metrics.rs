@@ -140,7 +140,7 @@ impl MetricsField {
         }
     }
 
-    fn register(&self, prefix: Option<&str>) -> proc_macro2::TokenStream {
+    fn visit(&self, prefix: Option<&str>) -> proc_macro2::TokenStream {
         let name = &self.name;
         let name_str = if let Some(prefix) = prefix {
             format!("{prefix}_{name}")
@@ -156,7 +156,7 @@ impl MetricsField {
         };
 
         quote! {
-            __registration.register(
+            visitor.push_metric(
                 #name_str,
                 #docs,
                 #unit,
@@ -218,20 +218,19 @@ impl MetricsImpl {
         let name = &self.name;
         let prefix = self.attrs.prefix.as_str();
         let prefix = (!prefix.is_empty()).then_some(prefix);
-        let register_fields = self.fields.iter().map(|field| field.register(prefix));
+        let visit_fields = self.fields.iter().map(|field| field.visit(prefix));
 
         quote! {
             impl #cr::Metrics for #name {
-                fn register_metrics(&self, __registry: &mut #cr::Registry) {
-                    let mut __registration = __registry.register_metrics();
-                    #(#register_fields;)*
+                fn visit_metrics(&self, mut visitor: #cr::MetricsVisitor<'_>) {
+                    #(#visit_fields;)*
                 }
             }
         }
     }
 
     fn derive_traits(&self) -> proc_macro2::TokenStream {
-        let cr = self.path_to_crate();
+        //let cr = self.path_to_crate();
         let name = &self.name;
         let initialization = self.initialize();
         let default_impl = quote! {
@@ -246,24 +245,6 @@ impl MetricsImpl {
         quote! {
             #default_impl
             #metrics_impl
-
-            const _: () = {
-                impl #name {
-                    /// Returns the instance of this metric used for metrics recording.
-                    pub fn instance() -> &'static Self {
-                        static THIS: #cr::_reexports::Lazy<#name> =
-                            #cr::_reexports::Lazy::new(core::default::Default::default);
-                        &*THIS
-                    }
-                }
-
-                #[#cr::_reexports::linkme::distributed_slice(#cr::METRICS_REGISTRATIONS)]
-                #[linkme(crate = #cr::_reexports::linkme)]
-                fn __register_test_metrics(registry: &mut #cr::Registry) {
-                    let instance = #name::instance();
-                    #cr::Metrics::register_metrics(instance, registry);
-                }
-            };
         }
     }
 }

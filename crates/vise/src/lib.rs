@@ -142,30 +142,30 @@ pub use vise_macros::EncodeLabelSet;
 /// Specifies unit of measurement for a metric. Note that specifying a unit influences the metric naming.
 pub use vise_macros::Metrics;
 
+/// FIXME
+pub use vise_macros::register;
+
 #[doc(hidden)] // only used by the `impl_metrics` macro
 pub mod _reexports {
     pub use linkme;
-    pub use once_cell::sync::Lazy;
     pub use prometheus_client::{encoding, metrics::family::MetricConstructor};
 }
 
 mod buckets;
+mod collector;
 mod constructor;
 mod registry;
+mod traits;
 mod wrappers;
 
 pub use crate::{
     buckets::Buckets,
+    collector::Collector,
     constructor::{ConstructMetric, DefaultConstructor},
-    registry::{Registry, METRICS_REGISTRATIONS},
+    registry::{MetricsVisitor, Registry, METRICS_REGISTRATIONS},
+    traits::{CollectToRegistry, Global, Metrics},
     wrappers::{Family, Gauge, Histogram, LatencyObserver},
 };
-
-/// Collection of metrics for a library or application. Should be derived using the corresponding macro.
-pub trait Metrics: 'static + Send + Sync {
-    #[doc(hidden)] // implementation detail
-    fn register_metrics(&self, registry: &mut Registry);
-}
 
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");
@@ -210,11 +210,17 @@ mod tests {
         histograms_with_buckets: Family<Method, Histogram<Duration>>,
     }
 
+    #[register]
+    #[metrics(crate = crate)]
+    static TEST_METRICS: Global<TestMetrics> = Global::new();
+
+    // FIXME: test registration
+
     #[test]
     fn testing_metrics() {
-        let test_metrics = TestMetrics::instance();
+        let test_metrics = &*TEST_METRICS;
         let mut registry = Registry::empty();
-        test_metrics.register_metrics(&mut registry);
+        registry.register_metrics(test_metrics);
 
         test_metrics.counter.inc();
         assert_eq!(test_metrics.counter.get(), 1);
@@ -325,13 +331,13 @@ mod tests {
 
     #[test]
     fn using_label_set() {
-        let test_metrics = MetricsWithLabels::instance();
+        let test_metrics = MetricsWithLabels::default();
         test_metrics.gauges[&Labels::named("test")].set(1.9);
         test_metrics.gauges[&Labels::named("test").num(5)].set(4.2);
         test_metrics.gauges[&Labels::named("").num(3)].set(2.0);
 
         let mut registry = Registry::empty();
-        test_metrics.register_metrics(&mut registry);
+        registry.register_metrics(&test_metrics);
         let mut buffer = String::new();
         registry.encode_to_text(&mut buffer).unwrap();
         let lines: Vec<_> = buffer.lines().collect();

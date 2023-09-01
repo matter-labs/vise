@@ -3,10 +3,12 @@
 use linkme::distributed_slice;
 use prometheus_client::{
     encoding::text,
-    registry::{Metric, Registry as RegistryInner, Unit},
+    registry::{Descriptor, LocalMetric, Metric, Registry as RegistryInner, Unit},
 };
 
 use std::{fmt, io};
+
+use crate::{collector::Collector, Metrics};
 
 #[doc(hidden)] // only used by the proc macros
 #[distributed_slice]
@@ -36,10 +38,16 @@ impl Registry {
         this
     }
 
-    /// Starts registering a group of metrics.
+    /// Registers a group of metrics.
     // TODO: collect metadata (defining crate, location etc.)?
-    pub fn register_metrics(&mut self) -> MetricsRegistration<'_> {
-        MetricsRegistration { registry: self }
+    pub fn register_metrics<M: Metrics>(&mut self, metrics: &M) {
+        let visitor = MetricsVisitor(MetricsVistorInner::Registry(self));
+        metrics.visit_metrics(visitor);
+    }
+
+    /// Registers a [`Collector`].
+    pub fn register_collector<M: Metrics>(&mut self, collector: &'static Collector<M>) {
+        self.inner.register_collector(Box::new(collector));
     }
 
     /// Encodes all metrics in this registry using the Open Metrics text format.
@@ -88,28 +96,42 @@ impl<W: io::Write> fmt::Write for WriterWrapper<W> {
     }
 }
 
-/// Registration for a group of metrics in a [`Registry`].
 #[derive(Debug)]
-pub struct MetricsRegistration<'a> {
-    registry: &'a mut Registry,
+enum MetricsVistorInner<'a> {
+    Registry(&'a mut Registry),
+    Collector(&'a mut Vec<(Descriptor, Box<dyn LocalMetric>)>),
 }
 
-impl MetricsRegistration<'_> {
+/// Registration for a group of metrics in a [`Registry`].
+#[derive(Debug)]
+pub struct MetricsVisitor<'a>(MetricsVistorInner<'a>);
+
+impl<'a> MetricsVisitor<'a> {
+    pub(crate) fn for_collector(metrics: &'a mut Vec<(Descriptor, Box<dyn LocalMetric>)>) -> Self {
+        Self(MetricsVistorInner::Collector(metrics))
+    }
+
     /// Registers a metric of family of metrics.
     // TODO: check no redefinitions
-    pub fn register(
+    pub fn push_metric(
         &mut self,
         name: &'static str,
         help: &'static str,
         unit: Option<Unit>,
         metric: impl Metric,
     ) {
-        if let Some(unit) = unit {
-            self.registry
-                .inner
-                .register_with_unit(name, help, unit, metric);
-        } else {
-            self.registry.inner.register(name, help, metric);
+        match &mut self.0 {
+            MetricsVistorInner::Registry(registry) => {
+                if let Some(unit) = unit {
+                    registry.inner.register_with_unit(name, help, unit, metric);
+                } else {
+                    registry.inner.register(name, help, metric);
+                }
+            }
+            MetricsVistorInner::Collector(collector) => {
+                let descriptor = Descriptor::new(name, help, unit, None, vec![]);
+                collector.push((descriptor, Box::new(metric)));
+            }
         }
     }
 }

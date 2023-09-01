@@ -338,7 +338,7 @@ mod tests {
     };
 
     use super::*;
-    use vise::{Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Metrics};
+    use vise::{Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Global, Metrics};
 
     const TEST_TIMEOUT: Duration = Duration::from_secs(3);
     // Since all tests access global state (metrics), we shouldn't run them in parallel
@@ -362,6 +362,9 @@ mod tests {
         /// Gauge with a label defined using the modern approach.
         gauge: Family<Label, Gauge<f64>>,
     }
+
+    #[vise::register]
+    static TEST_METRICS: Global<TestMetrics> = Global::new();
 
     #[test]
     fn transforming_open_metrics_text_format() {
@@ -405,9 +408,8 @@ mod tests {
     }
 
     fn report_metrics() {
-        let modern_metrics = TestMetrics::instance();
-        modern_metrics.counter.inc();
-        modern_metrics.gauge[&Label("value")].set(42.0);
+        TEST_METRICS.counter.inc();
+        TEST_METRICS.gauge[&Label("value")].set(42.0);
         metrics::increment_counter!("legacy_counter");
         metrics::increment_counter!("legacy_counter_with_labels", "label" => "value", "code" => "3");
         metrics::gauge!("legacy_gauge", 23.0, "label" => "value");
