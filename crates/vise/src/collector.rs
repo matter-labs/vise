@@ -5,12 +5,24 @@ use prometheus_client::{
     MaybeOwned,
 };
 
-use std::{borrow::Cow, fmt, iter};
+use std::{borrow::Cow, error, fmt, iter};
 
 use crate::{registry::MetricsVisitor, Metrics};
 
 type CollectorFn<M> = Box<dyn Fn() -> M + Send + Sync>;
 type CollectorItem<'a> = (Cow<'a, Descriptor>, MaybeOwned<'a, Box<dyn LocalMetric>>);
+
+/// Error that can occur when calling [`Collector::before_scrape()`].
+#[derive(Debug)]
+pub struct BeforeScrapeError(());
+
+impl fmt::Display for BeforeScrapeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Cannot set collector function: it is already set")
+    }
+}
+
+impl error::Error for BeforeScrapeError {}
 
 /// Collector allowing to define metrics dynamically.
 ///
@@ -49,12 +61,17 @@ impl<M: Metrics> Collector<M> {
 
     /// Initializes the producing function for this collector. The function will be called each time
     /// a [`Registry`] the collector is registered in is scraped.
-    pub fn before_scrape<F>(&'static self, hook: F)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the producing function has been already set.
+    pub fn before_scrape<F>(&'static self, hook: F) -> Result<(), BeforeScrapeError>
     where
         F: Fn() -> M + 'static + Send + Sync,
     {
-        // FIXME: return error
-        self.inner.set(Box::new(hook)).ok();
+        self.inner
+            .set(Box::new(hook))
+            .map_err(|_| BeforeScrapeError(()))
     }
 }
 
@@ -107,12 +124,14 @@ mod tests {
         let state = Arc::new(AtomicI64::new(0));
         let state_for_collector = Arc::downgrade(&state);
 
-        OWNING_COLLECTOR.before_scrape(move || {
-            let state = state_for_collector.upgrade()?;
-            let metrics = TestMetrics::default();
-            metrics.gauge.set(state.load(Ordering::Relaxed));
-            Some(metrics)
-        });
+        OWNING_COLLECTOR
+            .before_scrape(move || {
+                let state = state_for_collector.upgrade()?;
+                let metrics = TestMetrics::default();
+                metrics.gauge.set(state.load(Ordering::Relaxed));
+                Some(metrics)
+            })
+            .unwrap();
 
         let mut registry = Registry::empty();
         registry.register_collector(&OWNING_COLLECTOR);
@@ -154,13 +173,15 @@ mod tests {
         let state = Arc::new(AtomicI64::new(0));
         let state_for_collector = Arc::downgrade(&state);
 
-        BORROWING_COLLECTOR.before_scrape(move || {
-            let metrics = &METRICS_INSTANCE;
-            if let Some(state) = state_for_collector.upgrade() {
-                metrics.gauge.set(state.load(Ordering::Relaxed));
-            }
-            metrics
-        });
+        BORROWING_COLLECTOR
+            .before_scrape(move || {
+                let metrics = &METRICS_INSTANCE;
+                if let Some(state) = state_for_collector.upgrade() {
+                    metrics.gauge.set(state.load(Ordering::Relaxed));
+                }
+                metrics
+            })
+            .unwrap();
 
         let mut registry = Registry::empty();
         registry.register_collector(&BORROWING_COLLECTOR);
