@@ -4,6 +4,7 @@ members = [
   "crates/vise-exporter",
   "crates/vise-macros",
 ]
+resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
@@ -20,8 +21,8 @@ doc-comment = "0.3.3"
 elsa = "1.9.0"
 hyper = { version = "0.14", features = ["client", "server"] }
 linkme = "0.3.15"
-metrics = "0.20"
-metrics-exporter-prometheus = "0.11"
+metrics = "0.21"
+metrics-exporter-prometheus = "0.12"
 once_cell = "1.17"
 proc-macro2 = "1.0.7"
 prometheus-client = "0.21.2"

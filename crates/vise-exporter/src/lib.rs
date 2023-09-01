@@ -190,6 +190,10 @@ impl MetricsExporter {
     ///
     /// The exporter can only be installed once during app lifetime, so if it was installed previously,
     /// the same instance will be reused, and the closure won't be called.
+    ///
+    /// # Panics
+    ///
+    /// If `exporter_fn` panics, it is propagated to the caller.
     #[must_use]
     pub fn with_legacy_exporter<F>(mut self, exporter_fn: F) -> Self
     where
@@ -249,6 +253,7 @@ impl MetricsExporter {
     }
 
     /// Starts pushing metrics to the `endpoint` with the specified `interval` between pushes.
+    #[allow(clippy::missing_panics_doc)]
     pub async fn push_to_gateway(self, endpoint: Uri, interval: Duration) {
         tracing::info!(
             "Starting push-based Prometheus exporter to `{endpoint}` with push interval {interval:?}"
