@@ -5,6 +5,9 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::must_use_candidate, clippy::module_name_repetitions)]
 
+// Reexport to simplify configuring legacy exporter.
+pub use metrics_exporter_prometheus;
+
 use hyper::{
     body, header,
     service::{make_service_fn, service_fn},
