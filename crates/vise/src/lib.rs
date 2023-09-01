@@ -142,13 +142,48 @@ pub use vise_macros::EncodeLabelSet;
 /// Specifies unit of measurement for a metric. Note that specifying a unit influences the metric naming.
 pub use vise_macros::Metrics;
 
-/// FIXME
+/// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
+/// into registries instantiated using [`Registry::collect()`].
+///
+/// This macro must be placed on a static item of a type implementing [`CollectToRegistry`].
+///
+/// # Examples
+///
+/// ## Usage with global metrics
+///
+/// ```
+/// use vise::{Gauge, Global, Metrics};
+///
+/// #[derive(Debug, Metrics)]
+/// #[metrics(prefix = "test")]
+/// pub(crate) struct TestMetrics {
+///     gauge: Gauge,
+/// }
+///
+/// #[vise::register]
+/// static TEST_METRICS: Global<TestMetrics> = Global::new();
+/// ```
+///
+/// ## Usage with collectors
+///
+/// ```
+/// use vise::{Collector, Gauge, Global, Metrics};
+///
+/// #[derive(Debug, Metrics)]
+/// #[metrics(prefix = "dynamic")]
+/// pub(crate) struct DynamicMetrics {
+///     gauge: Gauge,
+/// }
+///
+/// #[vise::register]
+/// static TEST_COLLECTOR: Collector<DynamicMetrics> = Collector::new();
+/// ```
 pub use vise_macros::register;
 
 #[doc(hidden)] // only used by the `impl_metrics` macro
 pub mod _reexports {
     pub use linkme;
-    pub use prometheus_client::{encoding, metrics::family::MetricConstructor};
+    pub use prometheus_client::encoding;
 }
 
 mod buckets;
