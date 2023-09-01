@@ -147,7 +147,9 @@ impl LabelField {
     }
 
     fn detect_is_option(ty: &Type) -> bool {
-        let Type::Path(ty) = ty else { return false; };
+        let Type::Path(ty) = ty else {
+            return false;
+        };
         if ty.path.segments.len() != 1 {
             return false;
         }
