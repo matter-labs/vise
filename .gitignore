@@ -1,0 +1,7 @@
+# Rust output
+target
+# Misc files
+.DS_Store
+# Editor directories and files
+.idea
+.vscode

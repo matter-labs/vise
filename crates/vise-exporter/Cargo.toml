@@ -1,0 +1,25 @@
+[package]
+name = "vise-exporter"
+description = "Prometheus exporter for metrics defined using `vise`"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+vise = { version = "0.1.0", path = "../vise" }
+
+hyper.workspace = true
+metrics-exporter-prometheus.workspace = true # FIXME: make feature-gated
+once_cell.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+doc-comment.workspace = true
+metrics.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

@@ -1,0 +1,24 @@
+[package]
+name = "vise"
+description = "Typesafe metrics client"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+vise-macros = { version = "0.1.0", path = "../vise-macros" }
+
+elsa.workspace = true
+linkme.workspace = true
+once_cell.workspace = true
+prometheus-client.workspace = true
+
+[dev-dependencies]
+derive_more.workspace = true
+doc-comment.workspace = true
+rand.workspace = true
