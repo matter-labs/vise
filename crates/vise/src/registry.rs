@@ -6,17 +6,75 @@ use prometheus_client::{
     registry::{Descriptor, LocalMetric, Metric, Registry as RegistryInner, Unit},
 };
 
-use std::{fmt, io};
+use std::{collections::HashMap, fmt, io};
 
-use crate::{collector::Collector, Metrics};
+use crate::{
+    collector::Collector,
+    descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
+    Metrics,
+};
 
 #[doc(hidden)] // only used by the proc macros
 #[distributed_slice]
 pub static METRICS_REGISTRATIONS: [fn(&mut Registry)] = [..];
 
+impl FullMetricDescriptor {
+    fn format_for_panic(&self) -> String {
+        format!(
+            "{module}::{group_name}.{field_name} (line {line})",
+            module = self.group.module_path,
+            group_name = self.group.name,
+            field_name = self.metric.field_name,
+            line = self.group.line
+        )
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct RegisteredDescriptors {
+    groups: Vec<&'static MetricGroupDescriptor>,
+    metrics_by_name: HashMap<String, FullMetricDescriptor>,
+}
+
+impl RegisteredDescriptors {
+    /// Iterates over descriptors for all registered groups.
+    pub fn groups(&self) -> impl ExactSizeIterator<Item = &MetricGroupDescriptor> + '_ {
+        self.groups.iter().copied()
+    }
+
+    /// Obtains a metric by its full name (i.e., the name reported to Prometheus).
+    pub fn metric(&self, full_name: &str) -> Option<FullMetricDescriptor> {
+        self.metrics_by_name.get(full_name).copied()
+    }
+
+    /// Returns the total number of registered metrics.
+    pub fn metric_count(&self) -> usize {
+        self.groups.iter().map(|group| group.metrics.len()).sum()
+    }
+
+    fn push(&mut self, group: &'static MetricGroupDescriptor) {
+        for field in group.metrics {
+            let descriptor = FullMetricDescriptor::new(group, field);
+            let metric_name = field.full_name();
+            if let Some(prev_descriptor) =
+                self.metrics_by_name.insert(metric_name.clone(), descriptor)
+            {
+                panic!(
+                    "Metric `{metric_name}` is redefined. New definition is at {descriptor}, \
+                     previous definition was at {prev_descriptor}",
+                    descriptor = descriptor.format_for_panic(),
+                    prev_descriptor = prev_descriptor.format_for_panic()
+                );
+            }
+        }
+        self.groups.push(group);
+    }
+}
+
 /// Metrics registry.
 #[derive(Debug)]
 pub struct Registry {
+    descriptors: RegisteredDescriptors,
     inner: RegistryInner,
 }
 
@@ -24,6 +82,7 @@ impl Registry {
     /// Creates an empty registry.
     pub fn empty() -> Self {
         Self {
+            descriptors: RegisteredDescriptors::default(),
             inner: RegistryInner::default(),
         }
     }
@@ -38,15 +97,21 @@ impl Registry {
         this
     }
 
+    /// Returns descriptors for all registered metrics.
+    pub fn descriptors(&self) -> &RegisteredDescriptors {
+        &self.descriptors
+    }
+
     /// Registers a group of metrics.
-    // TODO: collect metadata (defining crate, location etc.)?
     pub fn register_metrics<M: Metrics>(&mut self, metrics: &M) {
+        self.descriptors.push(&M::DESCRIPTOR);
         let visitor = MetricsVisitor(MetricsVistorInner::Registry(self));
         metrics.visit_metrics(visitor);
     }
 
     /// Registers a [`Collector`].
     pub fn register_collector<M: Metrics>(&mut self, collector: &'static Collector<M>) {
+        self.descriptors.push(&M::DESCRIPTOR);
         self.inner.register_collector(Box::new(collector));
     }
 
@@ -112,7 +177,6 @@ impl<'a> MetricsVisitor<'a> {
     }
 
     /// Registers a metric of family of metrics.
-    // TODO: check no redefinitions
     pub fn push_metric(
         &mut self,
         name: &'static str,

@@ -6,22 +6,30 @@ use std::ops;
 
 use crate::{
     collector::Collector,
+    descriptors::MetricGroupDescriptor,
     registry::{MetricsVisitor, Registry},
 };
 
 /// Collection of metrics for a library or application. Should be derived using the corresponding macro.
 pub trait Metrics: 'static + Send + Sync {
+    /// Metrics descriptor.
+    const DESCRIPTOR: MetricGroupDescriptor;
+
     #[doc(hidden)] // implementation detail
     fn visit_metrics(&self, visitor: MetricsVisitor<'_>);
 }
 
 impl<M: Metrics> Metrics for &'static M {
+    const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
+
     fn visit_metrics(&self, visitor: MetricsVisitor<'_>) {
         (**self).visit_metrics(visitor);
     }
 }
 
 impl<M: Metrics> Metrics for Option<M> {
+    const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
+
     fn visit_metrics(&self, visitor: MetricsVisitor<'_>) {
         if let Some(metrics) = self {
             metrics.visit_metrics(visitor);

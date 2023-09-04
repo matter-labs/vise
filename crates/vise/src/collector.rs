@@ -117,8 +117,6 @@ mod tests {
     #[metrics(crate = crate)]
     static OWNING_COLLECTOR: Collector<Option<TestMetrics>> = Collector::new();
 
-    // FIXME: test registration
-
     #[test]
     fn using_owning_collector() {
         let state = Arc::new(AtomicI64::new(0));

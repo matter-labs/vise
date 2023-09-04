@@ -180,15 +180,16 @@ pub use vise_macros::Metrics;
 /// ```
 pub use vise_macros::register;
 
-#[doc(hidden)] // only used by the `impl_metrics` macro
+#[doc(hidden)] // only used by the proc macros
 pub mod _reexports {
     pub use linkme;
-    pub use prometheus_client::encoding;
+    pub use prometheus_client::{encoding, metrics::TypedMetric};
 }
 
 mod buckets;
 mod collector;
 mod constructor;
+pub mod descriptors;
 mod registry;
 mod traits;
 mod wrappers;
@@ -208,6 +209,7 @@ doc_comment::doctest!("../README.md");
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
+    use assert_matches::assert_matches;
     use derive_more::Display;
 
     use std::time::Duration;
@@ -226,7 +228,7 @@ mod tests {
 
     #[derive(Debug, Metrics)]
     #[metrics(crate = crate, prefix = "test")]
-    struct TestMetrics {
+    pub(crate) struct TestMetrics {
         /// Test counter.
         counter: Counter,
         #[metrics(unit = Unit::Bytes)]
@@ -249,7 +251,25 @@ mod tests {
     #[metrics(crate = crate)]
     static TEST_METRICS: Global<TestMetrics> = Global::new();
 
-    // FIXME: test registration
+    #[test]
+    fn metrics_registration() {
+        let registry = Registry::collect();
+        let descriptors = registry.descriptors();
+
+        assert!(descriptors.metric_count() > 5);
+        assert_eq!(descriptors.groups().len(), 2);
+        // ^ We have `TestMetrics` above and `TestMetrics` in the `collectors` module
+        assert!(descriptors
+            .groups()
+            .any(|group| group.module_path.contains("collector")));
+
+        let counter_descriptor = descriptors.metric("test_counter").unwrap();
+        assert_eq!(counter_descriptor.metric.help, "Test counter");
+
+        // Test metric registered via a `Collector` in the corresponding module tests.
+        let dynamic_gauge_descriptor = descriptors.metric("dynamic_gauge_bytes").unwrap();
+        assert_matches!(dynamic_gauge_descriptor.metric.unit, Some(Unit::Bytes));
+    }
 
     #[test]
     fn testing_metrics() {
