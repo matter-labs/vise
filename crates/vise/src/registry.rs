@@ -21,11 +21,13 @@ pub static METRICS_REGISTRATIONS: [fn(&mut Registry)] = [..];
 impl FullMetricDescriptor {
     fn format_for_panic(&self) -> String {
         format!(
-            "{module}::{group_name}.{field_name} (line {line})",
+            "{module}::{group_name}.{field_name} (line {line}) in crate {crate_name} {crate_version}",
             module = self.group.module_path,
             group_name = self.group.name,
             field_name = self.metric.field_name,
-            line = self.group.line
+            line = self.group.line,
+            crate_name = self.group.crate_name,
+            crate_version = self.group.crate_version
         )
     }
 }
@@ -72,6 +74,65 @@ impl RegisteredDescriptors {
 }
 
 /// Metrics registry.
+///
+/// A registry collects [`Metrics`] and [`Collector`]s defined in an app and libs the app depends on.
+/// Then, these metrics can be scraped by calling [`Self::encode()`] or [`Self::encode_to_text()`].
+///
+/// # Collecting metrics
+///
+/// You can include [`Metrics`] and [`Collector`]s to a registry manually using [`Self::register_metrics()`]
+/// and [`Self::register_collectors()`]. However, this can become untenable for large apps
+/// with a complex dependency graph. As an alternative, you may use [`register`](crate::register) attributes
+/// to mark [`Metrics`] and [`Collector`]s that should be present in the registry, and then initialize the registry
+/// with [`Self::collect()`].
+///
+/// ```
+/// use vise::{Buckets, Global, Histogram, Metrics, Registry, Unit};
+/// # use assert_matches::assert_matches;
+/// use std::time::Duration;
+///
+/// #[derive(Debug, Metrics)]
+/// #[metrics(prefix = "my_app")]
+/// pub(crate) struct AppMetrics {
+///     /// Latency of requests served by the app.
+///     #[metrics(buckets = Buckets::LATENCIES, unit = Unit::Seconds)]
+///     pub request_latency: Histogram<Duration>,
+/// }
+///
+/// #[vise::register]
+/// // ^ Registers this instance for use with `Registry::collect()`
+/// pub(crate) static APP_METRICS: Global<AppMetrics> = Global::new();
+///
+/// let registry = Registry::collect();
+/// // Check that the registered metric is present
+/// let descriptor = registry
+///     .descriptors()
+///     .metric("my_app_request_latency_seconds")
+///     .unwrap();
+/// assert_eq!(descriptor.metric.help, "Latency of requests served by the app");
+/// assert_matches!(descriptor.metric.unit, Some(Unit::Seconds));
+/// ```
+///
+/// `collect()` will panic if a metric is redefined:
+///
+/// ```should_panic
+/// # use vise::{Collector, Global, Gauge, Metrics, Registry, Unit};
+/// #[derive(Debug, Metrics)]
+/// pub(crate) struct AppMetrics {
+///     #[metrics(unit = Unit::Bytes)]
+///     cache_memory_use: Gauge<u64>,
+/// }
+///
+/// #[vise::register]
+/// pub(crate) static APP_METRICS: Global<AppMetrics> = Global::new();
+///
+/// // Collector that provides the same (already registered!) metrics. This is
+/// // logically incorrect; don't do this.
+/// #[vise::register]
+/// pub(crate) static APP_COLLECTOR: Collector<AppMetrics> = Collector::new();
+///
+/// let registry = Registry::collect(); // will panic
+/// ```
 #[derive(Debug)]
 pub struct Registry {
     descriptors: RegisteredDescriptors,

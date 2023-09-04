@@ -33,6 +33,8 @@ impl MetricDescriptor {
 pub struct MetricGroupDescriptor {
     /// Name of the crate in which the group is defined.
     pub crate_name: &'static str,
+    /// Version of the crate (more precisely, the package that the crate is a part of).
+    pub crate_version: &'static str,
     /// Path to the module in which the group is defined, e.g. `my_app::metrics`.
     pub module_path: &'static str,
     /// Name of the struct, e.g. `MyMetrics`.

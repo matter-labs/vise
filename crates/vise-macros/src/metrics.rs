@@ -271,6 +271,7 @@ impl MetricsImpl {
         let descriptor = quote_spanned! {name.span()=>
             #cr::descriptors::MetricGroupDescriptor {
                 crate_name: core::env!("CARGO_CRATE_NAME"),
+                crate_version: core::env!("CARGO_PKG_VERSION"),
                 module_path: core::module_path!(),
                 name: core::stringify!(#name),
                 line: core::line!(),
