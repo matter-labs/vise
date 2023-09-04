@@ -11,13 +11,11 @@ An exporter can be initialized from a metrics `Registry`:
 ```rust
 use tokio::sync::watch;
 
-use vise::Registry;
 use vise_exporter::MetricsExporter;
 
 async fn my_app() {
-    let registry = Registry::collect();
     let (shutdown_sender, mut shutdown_receiver) = watch::channel(());
-    let exporter = MetricsExporter::new(registry.into())
+    let exporter = MetricsExporter::default()
         .with_graceful_shutdown(async move {
             shutdown_receiver.changed().await.ok();
         });
@@ -38,6 +36,7 @@ Distributed under the terms of either
 
 at your option.
 
+[prometheus]: https://prometheus.io/docs/introduction/overview/
 <!-- FIXME: replace with `crates.io` link -->
 [`vise`]: ../vise
 [`hyper`]: https://crates.io/crates/hyper
