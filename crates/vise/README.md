@@ -55,6 +55,7 @@ pub(crate) struct MyMetrics {
 }
 
 // Commonly, it makes sense to make metrics available using a static:
+#[vise::register]
 static MY_METRICS: Global<MyMetrics> = Global::new();
 
 /// Isolated metric label. Note the `label` name specification below.
@@ -78,6 +79,8 @@ let latency = MY_METRICS.latencies[&Method("test")].start();
 let latency: Duration = latency.observe();
 // `latency` can be used in logging etc.
 ```
+
+See crate docs for more examples.
 
 ### Testing metrics
 

@@ -1,4 +1,117 @@
 //! Metrics handling library based on the `prometheus-client` crate.
+//!
+//! # Overview
+//!
+//! - The crate supports defining common metric types ([`Counter`]s, [`Gauge`]s and [`Histogram`]s).
+//!   A single metric is represented by an instance of these types; it can be reported using methods
+//!   like [`Counter::inc()`], [`Gauge::set()`] or [`Histogram::observe()`].
+//! - Metrics can be grouped into a [`Family`]. Essentially, a `Family` is a map in which metrics
+//!   are values keyed by a set of labels. See [`EncodeLabelValue`] and [`EncodeLabelSet`] derive macros
+//!   for more info on labels.
+//! - To define metrics, a group of logically related metrics is grouped into a struct
+//!   and the [`Metrics`](trait@Metrics) trait is [derived](macro@Metrics) for it. This resolves
+//!   full metric names and records additional metadata, such as help (from doc comments), unit of measurement
+//!   and [`Buckets`] for histograms.
+//! - Metric groups are registered in a [`Registry`], which then allows to [encode](Registry::encode())
+//!   metric data in the Open Metrics text format. Registration can be automated using the [`register`]
+//!   attribute, but it can be manual as well.
+//! - In order to allow for metrics computed during scraping, you can use [`Collector`].
+//!
+//! # Examples
+//!
+//! ## Defining metrics
+//!
+//! ```
+//! use vise::*;
+//! use std::{fmt, time::Duration};
+//!
+//! /// Metrics defined by the library or application. A single app / lib can define
+//! /// multiple metric structs.
+//! #[derive(Debug, Clone, Metrics)]
+//! #[metrics(prefix = "my_app")]
+//! // ^ Prefix added to all field names to get the final metric name (e.g., `my_app_latencies`).
+//! pub(crate) struct MyMetrics {
+//!     /// Simple counter. Doc comments for the fields will be reported
+//!     /// as Prometheus metric descriptions.
+//!     pub counter: Counter,
+//!     /// Integer-valued gauge. Unit will be reported to Prometheus and will influence metric name
+//!     /// by adding the corresponding suffix to it (in this case, `_bytes`).
+//!     #[metrics(unit = Unit::Bytes)]
+//!     pub gauge: Gauge<u64>,
+//!     /// Group of histograms with the "method" label (see the definition below).
+//!     /// Each `Histogram` or `Family` of `Histogram`s must define buckets; in this case,
+//!     /// we use default buckets for latencies.
+//!     #[metrics(buckets = Buckets::LATENCIES)]
+//!     pub latencies: Family<Method, Histogram<Duration>>,
+//! }
+//!
+//! /// Isolated metric label. Note the `label` name specification below.
+//! #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet, EncodeLabelValue)]
+//! #[metrics(label = "method")]
+//! pub(crate) struct Method(pub &'static str);
+//!
+//! // For the isolated metric label to work, you should implement `Display` for it:
+//! impl fmt::Display for Method {
+//!     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+//!         write!(formatter, "{}", self.0)
+//!     }
+//! }
+//! ```
+//!
+//! ## Registering metrics automatically
+//!
+//! Commonly, metrics can be registered by defining a `static`:
+//!
+//! ```
+//! # use vise::{Gauge, Global, Metrics, Registry};
+//! #[derive(Debug, Clone, Metrics)]
+//! pub(crate) struct MyMetrics {
+//! #   pub gauge: Gauge<u64>,
+//!     // defined in a previous code sample
+//! }
+//!
+//! #[vise::register]
+//! pub(crate) static MY_METRICS: Global<MyMetrics> = Global::new();
+//!
+//! // All registered metrics can be collected in a `Registry`:
+//! let registry = Registry::collect();
+//! // Do something with the `registry`, e.g. create an exporter.
+//!
+//! fn metered_logic() {
+//!     // method logic...
+//!     MY_METRICS.gauge.set(42);
+//! }
+//! ```
+//!
+//! ## Registering metrics manually
+//!
+//! It is possible to add metrics manually to a [`Registry`]. As a downside, this approach requires
+//! boilerplate to register all necessary metrics in an app and potentially libraries
+//! that it depends on.
+//!
+//! ```
+//! # use vise::{Gauge, Metrics, Registry};
+//! #[derive(Debug, Clone, Metrics)]
+//! pub(crate) struct MyMetrics {
+//! #   pub gauge: Gauge<u64>,
+//!     // defined in a previous code sample
+//! }
+//!
+//! let mut registry = Registry::empty();
+//! let my_metrics = MyMetrics::default();
+//! registry.register_metrics(&my_metrics);
+//! // Do something with the `registry`, e.g. create an exporter.
+//!
+//! // After registration, metrics can be moved to logic that reports the metrics.
+//! // Note that metric types trivially implement `Clone` to allow sharing
+//! // them among multiple components.
+//! fn metered_logic(metrics: MyMetrics) {
+//!     // method logic...
+//!     metrics.gauge.set(42);
+//! }
+//!
+//! metered_logic(my_metrics);
+//! ```
 
 // Linter settings.
 #![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]

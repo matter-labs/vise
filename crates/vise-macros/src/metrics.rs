@@ -291,7 +291,6 @@ impl MetricsImpl {
     }
 
     fn derive_traits(&self) -> proc_macro2::TokenStream {
-        //let cr = self.path_to_crate();
         let name = &self.name;
         let initialization = self.initialize();
         let default_impl = quote! {
