@@ -2,7 +2,7 @@
 
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, Data, DeriveInput, Expr, Field, Ident, Lit, Path};
+use syn::{Attribute, Data, DeriveInput, Expr, Field, Ident, Lit, Path, Type};
 
 use std::fmt;
 
@@ -77,11 +77,22 @@ impl ParseAttribute for MetricsFieldAttrs {
     }
 }
 
-#[derive(Debug)]
 struct MetricsField {
     attrs: MetricsFieldAttrs,
     name: Ident,
+    ty: Type,
     docs: String,
+}
+
+impl fmt::Debug for MetricsField {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MetricsField")
+            .field("attrs", &self.attrs)
+            .field("name", &self.name)
+            .field("docs", &self.docs)
+            .finish()
+    }
 }
 
 impl MetricsField {
@@ -93,6 +104,7 @@ impl MetricsField {
         validate_name(&name.to_string())
             .map_err(|message| syn::Error::new(name.span(), message))?;
 
+        let ty = raw.ty.clone();
         let attrs = metrics_attribute(&raw.attrs)?;
 
         let doc_lines = raw.attrs.iter().filter_map(|attr| {
@@ -125,7 +137,12 @@ impl MetricsField {
             docs.pop();
         }
 
-        Ok(Self { attrs, name, docs })
+        Ok(Self {
+            attrs,
+            name,
+            ty,
+            docs,
+        })
     }
 
     fn initialize_default(&self, cr: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
@@ -140,7 +157,7 @@ impl MetricsField {
         }
     }
 
-    fn register(&self, prefix: Option<&str>) -> proc_macro2::TokenStream {
+    fn visit(&self, prefix: Option<&str>) -> proc_macro2::TokenStream {
         let name = &self.name;
         let name_str = if let Some(prefix) = prefix {
             format!("{prefix}_{name}")
@@ -156,12 +173,42 @@ impl MetricsField {
         };
 
         quote! {
-            __registration.register(
+            visitor.push_metric(
                 #name_str,
                 #docs,
                 #unit,
                 core::clone::Clone::clone(&self.#name),
             );
+        }
+    }
+
+    fn describe(
+        &self,
+        prefix: Option<&str>,
+        cr: &proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        let name = &self.name;
+        let name_str = if let Some(prefix) = prefix {
+            format!("{prefix}_{name}")
+        } else {
+            name.to_string()
+        };
+        let docs = &self.docs;
+        let ty = &self.ty;
+        let unit = if let Some(unit) = &self.attrs.unit {
+            quote!(core::option::Option::Some(#unit))
+        } else {
+            quote!(core::option::Option::None)
+        };
+
+        quote! {
+            #cr::descriptors::MetricDescriptor {
+                name: #name_str,
+                field_name: core::stringify!(#name),
+                metric_type: <#ty as #cr::_reexports::TypedMetric>::TYPE,
+                help: #docs,
+                unit: #unit,
+            }
         }
     }
 }
@@ -218,20 +265,32 @@ impl MetricsImpl {
         let name = &self.name;
         let prefix = self.attrs.prefix.as_str();
         let prefix = (!prefix.is_empty()).then_some(prefix);
-        let register_fields = self.fields.iter().map(|field| field.register(prefix));
+        let visit_fields = self.fields.iter().map(|field| field.visit(prefix));
+        let describe_fields = self.fields.iter().map(|field| field.describe(prefix, &cr));
+
+        let descriptor = quote_spanned! {name.span()=>
+            #cr::descriptors::MetricGroupDescriptor {
+                crate_name: core::env!("CARGO_CRATE_NAME"),
+                crate_version: core::env!("CARGO_PKG_VERSION"),
+                module_path: core::module_path!(),
+                name: core::stringify!(#name),
+                line: core::line!(),
+                metrics: &[#(#describe_fields,)*],
+            }
+        };
 
         quote! {
             impl #cr::Metrics for #name {
-                fn register_metrics(&self, __registry: &mut #cr::Registry) {
-                    let mut __registration = __registry.register_metrics();
-                    #(#register_fields;)*
+                const DESCRIPTOR: #cr::descriptors::MetricGroupDescriptor = #descriptor;
+
+                fn visit_metrics(&self, mut visitor: #cr::MetricsVisitor<'_>) {
+                    #(#visit_fields;)*
                 }
             }
         }
     }
 
     fn derive_traits(&self) -> proc_macro2::TokenStream {
-        let cr = self.path_to_crate();
         let name = &self.name;
         let initialization = self.initialize();
         let default_impl = quote! {
@@ -246,24 +305,6 @@ impl MetricsImpl {
         quote! {
             #default_impl
             #metrics_impl
-
-            const _: () = {
-                impl #name {
-                    /// Returns the instance of this metric used for metrics recording.
-                    pub fn instance() -> &'static Self {
-                        static THIS: #cr::_reexports::Lazy<#name> =
-                            #cr::_reexports::Lazy::new(core::default::Default::default);
-                        &*THIS
-                    }
-                }
-
-                #[#cr::_reexports::linkme::distributed_slice(#cr::METRICS_REGISTRATIONS)]
-                #[linkme(crate = #cr::_reexports::linkme)]
-                fn __register_test_metrics(registry: &mut #cr::Registry) {
-                    let instance = #name::instance();
-                    #cr::Metrics::register_metrics(instance, registry);
-                }
-            };
         }
     }
 }

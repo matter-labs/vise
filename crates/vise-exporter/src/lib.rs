@@ -18,7 +18,8 @@ use once_cell::sync::OnceCell;
 
 use std::{
     borrow::Cow,
-    fmt,
+    collections::HashSet,
+    fmt::{self, Write as _},
     future::{self, Future},
     net::SocketAddr,
     pin::Pin,
@@ -27,6 +28,9 @@ use std::{
     time::Duration,
 };
 
+mod metrics;
+
+use crate::metrics::{Facade, EXPORTER_METRICS};
 use vise::Registry;
 
 static LEGACY_EXPORTER: OnceCell<PrometheusHandle> = OnceCell::new();
@@ -39,16 +43,36 @@ struct MetricsExporterInner {
 
 impl MetricsExporterInner {
     fn render_body(&self) -> Body {
+        let latency = EXPORTER_METRICS.scrape_latency[&Facade::Metrics].start();
         let mut buffer = if let Some(legacy_exporter) = self.legacy_exporter {
             Self::transform_legacy_metrics(&legacy_exporter.render())
         } else {
             String::new()
         };
 
+        let latency = latency.observe();
+        let scraped_size = buffer.len();
+        EXPORTER_METRICS.scraped_size[&Facade::Metrics].observe(scraped_size);
+        tracing::debug!(
+            latency_sec = latency.as_secs_f64(),
+            scraped_size,
+            "Scraped metrics using `metrics` façade in {latency:?} (scraped size: {scraped_size}B)"
+        );
+
+        let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
         let mut new_buffer = String::with_capacity(1_024);
         self.registry.encode_to_text(&mut new_buffer).unwrap();
         let new_buffer = Self::transform_new_metrics(&new_buffer);
         // ^ `unwrap()` is safe; writing to a string never fails.
+
+        let latency = latency.observe();
+        let scraped_size = new_buffer.len();
+        EXPORTER_METRICS.scraped_size[&Facade::Vise].observe(scraped_size);
+        tracing::debug!(
+            latency_sec = latency.as_secs_f64(),
+            scraped_size,
+            "Scraped metrics using `vise` façade in {latency:?} (scraped size: {scraped_size}B)"
+        );
 
         // Concatenate buffers. Since `legacy_buffer` ends with a newline (if it isn't empty),
         // we don't need to add a newline.
@@ -176,6 +200,7 @@ impl MetricsExporter {
     /// Creates an exporter based on the provided metrics [`Registry`]. Note that the registry
     /// is in `Arc`, meaning it can be used elsewhere (e.g., to export data in another format).
     pub fn new(registry: Arc<Registry>) -> Self {
+        Self::log_metrics_stats(&registry);
         Self {
             inner: MetricsExporterInner {
                 registry,
@@ -183,6 +208,32 @@ impl MetricsExporter {
             },
             shutdown_future: Box::pin(future::pending()),
         }
+    }
+
+    fn log_metrics_stats(registry: &Registry) {
+        const SAMPLED_CRATE_COUNT: usize = 5;
+
+        let groups = registry.descriptors().groups();
+        let group_count = groups.len();
+        let metric_count = registry.descriptors().metric_count();
+
+        let mut unique_crates = HashSet::new();
+        for group in groups {
+            let crate_info = (group.crate_name, group.crate_version);
+            if unique_crates.insert(crate_info) && unique_crates.len() >= SAMPLED_CRATE_COUNT {
+                break;
+            }
+        }
+        let mut crates = String::with_capacity(unique_crates.len() * 16);
+        // ^ 16 chars looks like a somewhat reasonable estimate for crate name + version
+        for (crate_name, crate_version) in unique_crates {
+            write!(crates, "{crate_name} {crate_version}, ").unwrap();
+        }
+        crates.push_str("...");
+
+        tracing::info!(
+            "Created metrics exporter with {metric_count} metrics in {group_count} groups from crates {crates}"
+        );
     }
 
     /// Installs a legacy exporter for the metrics defined using the `metrics` façade. The specified
@@ -328,17 +379,18 @@ doc_comment::doctest!("../README.md");
 
 #[cfg(test)]
 mod tests {
+    use ::metrics;
     use hyper::body::Bytes;
-    use std::net::Ipv4Addr;
     use tokio::sync::{mpsc, Mutex};
 
     use std::{
+        net::Ipv4Addr,
         str,
         sync::atomic::{AtomicU32, Ordering},
     };
 
     use super::*;
-    use vise::{Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Metrics};
+    use vise::{Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Global, Metrics};
 
     const TEST_TIMEOUT: Duration = Duration::from_secs(3);
     // Since all tests access global state (metrics), we shouldn't run them in parallel
@@ -362,6 +414,9 @@ mod tests {
         /// Gauge with a label defined using the modern approach.
         gauge: Family<Label, Gauge<f64>>,
     }
+
+    #[vise::register]
+    static TEST_METRICS: Global<TestMetrics> = Global::new();
 
     #[test]
     fn transforming_open_metrics_text_format() {
@@ -405,9 +460,8 @@ mod tests {
     }
 
     fn report_metrics() {
-        let modern_metrics = TestMetrics::instance();
-        modern_metrics.counter.inc();
-        modern_metrics.gauge[&Label("value")].set(42.0);
+        TEST_METRICS.counter.inc();
+        TEST_METRICS.gauge[&Label("value")].set(42.0);
         metrics::increment_counter!("legacy_counter");
         metrics::increment_counter!("legacy_counter_with_labels", "label" => "value", "code" => "3");
         metrics::gauge!("legacy_gauge", 23.0, "label" => "value");

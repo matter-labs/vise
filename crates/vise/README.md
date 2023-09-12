@@ -54,6 +54,10 @@ pub(crate) struct MyMetrics {
     pub latencies: Family<Method, Histogram<Duration>>,
 }
 
+// Commonly, it makes sense to make metrics available using a static:
+#[vise::register]
+static MY_METRICS: Global<MyMetrics> = Global::new();
+
 /// Isolated metric label. Note the `label` name specification below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet, EncodeLabelValue)]
 #[metrics(label = "method")]
@@ -67,15 +71,16 @@ impl fmt::Display for Method {
 }
 
 // Metrics are singletons globally available using the `instance()` method.
-let metrics = MyMetrics::instance();
-metrics.counter.inc();
-assert_eq!(metrics.counter.get(), 1); // Useful for testing
+MY_METRICS.counter.inc();
+assert_eq!(MY_METRICS.counter.get(), 1); // Useful for testing
 
-let latency = metrics.latencies[&Method("test")].start();
+let latency = MY_METRICS.latencies[&Method("test")].start();
 // Do some work...
 let latency: Duration = latency.observe();
 // `latency` can be used in logging etc.
 ```
+
+See crate docs for more examples.
 
 ### Testing metrics
 

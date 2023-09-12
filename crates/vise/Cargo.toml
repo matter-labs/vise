@@ -19,6 +19,7 @@ once_cell.workspace = true
 prometheus-client.workspace = true
 
 [dev-dependencies]
+assert_matches.workspace = true
 derive_more.workspace = true
 doc-comment.workspace = true
 rand.workspace = true
