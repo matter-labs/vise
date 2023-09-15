@@ -34,10 +34,14 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Clippy
         run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      - name: Clippy exporter (no features)
+        run: cargo clippy -p vise-exporter --no-default-features --all-targets -- -D warnings
       - name: Deny
         run: cargo deny check
 
       - name: Run tests
         run: cargo test --workspace --all-features --all-targets
+      - name: Run tests (exporter, no features)
+        run: cargo test -p vise-exporter --no-default-features --all-targets
       - name: Run doc tests
         run: cargo test --workspace --all-features --doc
