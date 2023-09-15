@@ -26,7 +26,7 @@ jobs:
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.3
       - name: Install `cargo-deny`
-        uses: baptiste0928/cargo-install@v1
+        uses: baptiste0928/cargo-install@v2.2.0
         with:
           crate: cargo-deny
 
