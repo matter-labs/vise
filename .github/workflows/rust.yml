@@ -37,7 +37,7 @@ jobs:
       - name: Clippy exporter (no features)
         run: cargo clippy -p vise-exporter --no-default-features --all-targets -- -D warnings
       - name: Deny
-        run: cargo deny check
+        run: cargo deny --all-features check
 
       - name: Run tests
         run: cargo test --workspace --all-features --all-targets
