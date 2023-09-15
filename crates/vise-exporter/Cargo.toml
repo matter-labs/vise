@@ -14,7 +14,7 @@ categories.workspace = true
 vise = { version = "0.1.0", path = "../vise" }
 
 hyper.workspace = true
-metrics-exporter-prometheus.workspace = true # FIXME: make feature-gated
+metrics-exporter-prometheus = { workspace = true, optional = true }
 once_cell.workspace = true
 tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
@@ -23,3 +23,8 @@ tracing.workspace = true
 doc-comment.workspace = true
 metrics.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
+
+[features]
+default = []
+# Enables exporting metrics defined with the `metrics` façade
+legacy = ["metrics-exporter-prometheus"]
