@@ -26,6 +26,13 @@ should be reasonably small.
 
 ## Usage
 
+Add this to your Crate.toml:
+
+```toml
+[dependencies]
+vise = "0.1.0"
+```
+
 ### Defining and reporting metrics
 
 Metrics are defined as structs, with each field corresponding to a metric or a family of metrics:

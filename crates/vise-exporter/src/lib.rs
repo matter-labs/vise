@@ -51,6 +51,9 @@
 //! }
 //! ```
 
+// Documentation settings.
+#![doc(html_root_url = "https://docs.rs/vise-exporter/0.1.0")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 // Linter settings.
 #![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
 #![warn(clippy::all, clippy::pedantic)]
@@ -321,6 +324,7 @@ impl MetricsExporter {
     /// If `exporter_fn` panics, it is propagated to the caller.
     #[must_use]
     #[cfg(feature = "legacy")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "legacy")))]
     pub fn with_legacy_exporter<F>(mut self, exporter_fn: F) -> Self
     where
         F: FnOnce(PrometheusBuilder) -> PrometheusBuilder,

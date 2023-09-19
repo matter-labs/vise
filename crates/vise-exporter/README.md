@@ -6,6 +6,13 @@ and push-based communication with Prometheus.
 
 ## Usage
 
+Add this to your Crate.toml:
+
+```toml
+[dependencies]
+vise-exporter = "0.1.0"
+```
+
 An exporter can be initialized from a metrics `Registry`:
 
 ```rust
@@ -26,6 +33,8 @@ async fn my_app() {
     shutdown_sender.send_replace(());
 }
 ```
+
+See crate docs for more examples.
 
 ## License
 

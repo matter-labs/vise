@@ -10,6 +10,11 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+# Set `docsrs` to enable unstable `doc(cfg(...))` attributes.
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 vise = { version = "0.1.0", path = "../vise" }
 
@@ -23,6 +28,7 @@ tracing.workspace = true
 doc-comment.workspace = true
 metrics.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
+version-sync.workspace = true
 
 [features]
 default = []
