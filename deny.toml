@@ -44,10 +44,15 @@ allow = [
 multiple-versions = "deny"
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
-  # Old versions used by `metrics`
-  { name = "hashbrown", version = "=0.12.3" },
-  # Old versions required by `derive_more`
-  { name = "syn", version = "=1.0.109" },
-  # Old versions required by `hyper`
-  { name = "socket2", version = "=0.4.9" },
+  # Old version used by `metrics-util`. A newer version is used by `version-sync` (a dev dependency).
+  { name = "hashbrown", version = "^0.13" },
+  # Old `syn` version required by `derive_more`. Since it's a proc macro dep required
+  # from a dev dependency, having a duplicate version is sort of OK.
+  { name = "syn", version = "^1" },
+  # Old version required by `hyper`. No fix available ATM.
+  { name = "socket2", version = "^0.4" },
+]
+skip-tree = [
+  # Old version used by `metrics`
+  { name = "indexmap", version = "^1" },
 ]
