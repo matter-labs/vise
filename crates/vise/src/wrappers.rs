@@ -18,7 +18,7 @@ use std::{
     marker::PhantomData,
     ops,
     sync::{
-        atomic::{AtomicI64, AtomicU64, Ordering},
+        atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering},
         Arc,
     },
     time::{Duration, Instant},
@@ -32,6 +32,7 @@ pub enum EncodedGaugeValue {
     F64(f64),
 }
 
+// FIXME: make public?
 pub trait GaugeValue: 'static + Copy + fmt::Debug {
     type Atomic: gauge::Atomic<Self> + Default + fmt::Debug;
 
@@ -61,31 +62,50 @@ impl GaugeValue for u64 {
 #[derive(Debug, Default)]
 pub struct AtomicU64Wrapper(AtomicU64);
 
-impl gauge::Atomic<u64> for AtomicU64Wrapper {
-    fn inc(&self) -> u64 {
-        self.inc_by(1)
-    }
+macro_rules! impl_atomic_wrapper {
+    ($wrapper:ty => $int:ty) => {
+        impl gauge::Atomic<$int> for $wrapper {
+            fn inc(&self) -> $int {
+                self.inc_by(1)
+            }
 
-    fn inc_by(&self, v: u64) -> u64 {
-        self.0.fetch_add(v, Ordering::Relaxed)
-    }
+            fn inc_by(&self, v: $int) -> $int {
+                self.0.fetch_add(v, Ordering::Relaxed)
+            }
 
-    fn dec(&self) -> u64 {
-        self.dec_by(1)
-    }
+            fn dec(&self) -> $int {
+                self.dec_by(1)
+            }
 
-    fn dec_by(&self, v: u64) -> u64 {
-        self.0.fetch_sub(v, Ordering::Relaxed)
-    }
+            fn dec_by(&self, v: $int) -> $int {
+                self.0.fetch_sub(v, Ordering::Relaxed)
+            }
 
-    fn set(&self, v: u64) -> u64 {
-        self.0.swap(v, Ordering::Relaxed)
-    }
+            fn set(&self, v: $int) -> $int {
+                self.0.swap(v, Ordering::Relaxed)
+            }
 
-    fn get(&self) -> u64 {
-        self.0.load(Ordering::Relaxed)
+            fn get(&self) -> $int {
+                self.0.load(Ordering::Relaxed)
+            }
+        }
+    };
+}
+
+impl_atomic_wrapper!(AtomicU64Wrapper => u64);
+
+impl GaugeValue for usize {
+    type Atomic = AtomicUsizeWrapper; // Can't use `AtomicUsize` due to orphaning rules
+
+    fn encode(self) -> EncodedGaugeValue {
+        GaugeValue::encode(self as u64)
     }
 }
+
+#[derive(Debug, Default)]
+pub struct AtomicUsizeWrapper(AtomicUsize);
+
+impl_atomic_wrapper!(AtomicUsizeWrapper => usize);
 
 impl GaugeValue for f64 {
     type Atomic = AtomicU64;

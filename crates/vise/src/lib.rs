@@ -347,7 +347,7 @@ mod tests {
         /// Test counter.
         counter: Counter,
         #[metrics(unit = Unit::Bytes)]
-        gauge: Gauge,
+        gauge: Gauge<usize>,
         /// Test family of gauges.
         family_of_gauges: Family<Method, Gauge<f64>>,
         /// Histogram with inline bucket specification.
