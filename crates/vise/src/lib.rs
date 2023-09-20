@@ -139,6 +139,18 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 ///
 /// [`EncodeLabelValue`]: trait@prometheus_client::encoding::EncodeLabelValue
 ///
+/// ## `rename_all`
+///
+/// **Type:** string; one of `lowercase`, `UPPERCASE`, `camelCase`, `snake_case`, `SCREAMING_SNAKE_CASE`,
+/// `kebab-case`, `SCREAMING-KEBAB-CASE`
+///
+/// **Default value:** not set
+///
+/// Specifies how enum variant names should be transformed into label values. This attribute
+/// can only be placed on enums in which all variants don't have fields (aka C-style enums).
+///
+/// Mutually exclusive with the `format` attribute.
+///
 /// # Examples
 ///
 ///  ## Default format
@@ -158,12 +170,24 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 /// Label value using `Hex` formatting with `0` padding and `0x` prepended.
 ///
 /// ```
-/// use derive_more::LowerHex;
-/// use vise::EncodeLabelValue;
-///
+/// # use derive_more::LowerHex;
+/// # use vise::EncodeLabelValue;
 /// #[derive(Debug, LowerHex, EncodeLabelValue)]
 /// #[metrics(format = "0x{:02x}")]
 /// struct ResponseType(u8);
+/// ```
+///
+/// ## Using `rename_all` on C-style enum
+///
+/// ```
+/// # use derive_more::LowerHex;
+/// # use vise::EncodeLabelValue;
+/// #[derive(Debug, EncodeLabelValue)]
+/// #[metrics(rename_all = "snake_case")]
+/// enum Database {
+///     Postgres, // renamed to "postgres"
+///     MySql, // renamed to "my_sql"
+/// }
 /// ```
 pub use vise_macros::EncodeLabelValue;
 
