@@ -309,6 +309,7 @@ mod metrics;
 mod registry;
 #[cfg(test)]
 mod tests;
+pub mod traits;
 mod wrappers;
 
 pub use crate::{
