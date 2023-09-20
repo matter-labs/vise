@@ -1,6 +1,6 @@
 //! Derivation of `EncodeLabelValue` and `EncodeLabelSet` traits.
 
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -193,6 +193,8 @@ impl EncodeLabelValueImpl {
             let message = "`rename_all` attribute can only be placed on enums";
             return Err(syn::Error::new_spanned(raw, message));
         };
+
+        let mut unique_label_values = HashSet::with_capacity(data.variants.len());
         let variants = data.variants.iter().map(|variant| {
             if !matches!(variant.fields, Fields::Unit) {
                 let message = "To use `rename_all` attribute, all enum variants must be plain \
@@ -205,14 +207,19 @@ impl EncodeLabelValueImpl {
                 return Err(syn::Error::new(variant.ident.span(), message));
             }
             let attrs: EnumVariantAttrs = metrics_attribute(&variant.attrs)?;
+            let label_value = if let Some(name_override) = attrs.name {
+                name_override.value()
+            } else {
+                case.transform(&ident_str)
+            };
+            if !unique_label_values.insert(label_value.clone()) {
+                let message = format!("Label value `{label_value}` is redefined");
+                return Err(syn::Error::new_spanned(variant, message));
+            }
 
             Ok(EnumVariant {
                 ident: variant.ident.clone(),
-                label_value: if let Some(name_override) = attrs.name {
-                    name_override.value()
-                } else {
-                    case.transform(&ident_str)
-                },
+                label_value,
             })
         });
         variants.collect()
@@ -503,5 +510,19 @@ mod tests {
         assert_eq!(fields[0].label_string(), "type");
         assert_eq!(fields[1].label_string(), "kind");
         assert!(fields[1].attrs.skip.is_some());
+    }
+
+    #[test]
+    fn label_value_redefinition_error() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[metrics(rename_all = "snake_case")]
+            enum Label {
+                First,
+                #[metrics(name = "first")]
+                Second,
+            }
+        };
+        let err = EncodeLabelValueImpl::new(&input).unwrap_err().to_string();
+        assert!(err.contains("Label value `first` is redefined"), "{err}");
     }
 }
