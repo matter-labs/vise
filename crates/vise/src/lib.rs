@@ -305,18 +305,18 @@ mod buckets;
 mod collector;
 mod constructor;
 pub mod descriptors;
+mod metrics;
 mod registry;
 #[cfg(test)]
 mod tests;
-mod traits;
 mod wrappers;
 
 pub use crate::{
     buckets::Buckets,
     collector::Collector,
     constructor::{ConstructMetric, DefaultConstructor},
-    registry::{MetricsVisitor, Registry, METRICS_REGISTRATIONS},
-    traits::{CollectToRegistry, Global, Metrics},
+    metrics::{Global, Metrics},
+    registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
     wrappers::{Family, Gauge, Histogram, LatencyObserver},
 };
 

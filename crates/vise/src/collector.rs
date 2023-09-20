@@ -7,7 +7,10 @@ use prometheus_client::{
 
 use std::{borrow::Cow, error, fmt, iter};
 
-use crate::{registry::MetricsVisitor, Metrics};
+use crate::{
+    registry::{CollectToRegistry, MetricsVisitor, Registry},
+    Metrics,
+};
 
 type CollectorFn<M> = Box<dyn Fn() -> M + Send + Sync>;
 type CollectorItem<'a> = (Cow<'a, Descriptor>, MaybeOwned<'a, Box<dyn LocalMetric>>);
@@ -88,6 +91,12 @@ impl<M: Metrics> CollectorTrait for &'static Collector<M> {
         } else {
             Box::new(iter::empty())
         }
+    }
+}
+
+impl<M: Metrics> CollectToRegistry for Collector<M> {
+    fn collect_to_registry(&'static self, registry: &mut Registry) {
+        registry.register_collector(self);
     }
 }
 

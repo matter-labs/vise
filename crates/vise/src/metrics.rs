@@ -1,13 +1,12 @@
-//! Core traits defined by the crate.
+//! Core `Metrics` trait defined by the crate.
 
 use once_cell::sync::Lazy;
 
 use std::ops;
 
 use crate::{
-    collector::Collector,
     descriptors::MetricGroupDescriptor,
-    registry::{MetricsVisitor, Registry},
+    registry::{CollectToRegistry, MetricsVisitor, Registry},
 };
 
 /// Collection of metrics for a library or application. Should be derived using the corresponding macro.
@@ -57,22 +56,9 @@ impl<M: Metrics> ops::Deref for Global<M> {
     }
 }
 
-/// Collects metrics from this type to registry. This is used by the [`register`](crate::register)
-/// macro to handle registration of [`Global`] metrics and [`Collector`]s.
-pub trait CollectToRegistry: 'static + Send + Sync {
-    #[doc(hidden)] // implementation detail
-    fn collect_to_registry(&'static self, registry: &mut Registry);
-}
-
 impl<M: Metrics> CollectToRegistry for Global<M> {
     fn collect_to_registry(&'static self, registry: &mut Registry) {
         let metrics: &M = self;
         registry.register_metrics(metrics);
-    }
-}
-
-impl<M: Metrics> CollectToRegistry for Collector<M> {
-    fn collect_to_registry(&'static self, registry: &mut Registry) {
-        registry.register_collector(self);
     }
 }
