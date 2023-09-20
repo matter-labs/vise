@@ -62,7 +62,7 @@ fn register_static(input: &mut ItemStatic) -> syn::Result<proc_macro2::TokenStre
     })
 }
 
-pub(crate) fn impl_register(_attrs: TokenStream, input: TokenStream) -> TokenStream {
+pub(crate) fn impl_register(input: TokenStream) -> TokenStream {
     let mut item: ItemStatic = match syn::parse(input) {
         Ok(item) => item,
         Err(err) => return err.into_compile_error().into(),

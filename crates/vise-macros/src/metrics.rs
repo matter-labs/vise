@@ -20,7 +20,7 @@ impl fmt::Debug for MetricsAttrs {
         formatter
             .debug_struct("MetricsAttrs")
             .field("prefix", &self.prefix)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -91,7 +91,7 @@ impl fmt::Debug for MetricsField {
             .field("attrs", &self.attrs)
             .field("name", &self.name)
             .field("docs", &self.docs)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
