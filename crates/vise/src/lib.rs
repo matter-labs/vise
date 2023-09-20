@@ -146,8 +146,17 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 ///
 /// Specifies how enum variant names should be transformed into label values. This attribute
 /// can only be placed on enums in which all variants don't have fields (aka C-style enums).
-///
 /// Mutually exclusive with the `format` attribute.
+///
+/// Caveats:
+///
+/// - `rename_all` assumes that original variant names are in `PascalCase` (i.e., follow Rust naming conventions).
+/// - `rename_all` requires original variant names to consist of ASCII chars.
+/// - Each letter of capitalized acronyms (e.g., "HTTP" in `HTTPServer`) is treated as a separate word.
+///   E.g., `rename_all = "snake_case"` will rename `HTTPServer` to `h_t_t_p_server`.
+///   Note that [it is recommended][clippy-acronyms] to not capitalize acronyms (i.e., use `HttpServer`).
+/// - No spacing is inserted before numbers or other non-letter chars. E.g., `rename_all = "snake_case"`
+///   will rename `Status500` to `status500`, not to `status_500`.
 ///
 /// # Variant attributes
 ///
@@ -157,6 +166,8 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 ///
 /// Specifies the name override for a particular enum variant when used with the `rename_all` attribute
 /// described above.
+///
+/// [clippy-acronyms]: https://rust-lang.github.io/rust-clippy/master/index.html#/upper_case_acronyms
 ///
 /// # Examples
 ///
