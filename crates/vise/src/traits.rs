@@ -1,7 +1,5 @@
 //! Traits used for metric definitions, such as [`GaugeValue`] and [`HistogramValue`].
 
-#![allow(missing_docs)] // FIXME
-
 use prometheus_client::metrics::gauge;
 
 use std::{
@@ -10,15 +8,25 @@ use std::{
     time::Duration,
 };
 
+/// Encoded value of a gauge.
 #[derive(Debug, Clone, Copy)]
 pub enum EncodedGaugeValue {
+    /// Signed integer value.
     I64(i64),
+    /// Floating point value.
     F64(f64),
 }
 
+/// Value of a [`Gauge`](crate::Gauge).
+///
+/// This trait is implemented for signed and unsigned integers (`i64`, `u64`, `isize`, `usize`),
+/// `f64` and [`Duration`]. To use smaller ints and floats as `Gauge` values,
+/// they can be converted to their larger-sized variants (e.g., `i16` to `i64`, `u32` to `u64`,
+/// and `f32` to `f64`).
 pub trait GaugeValue: 'static + Copy + fmt::Debug {
+    /// Atomic store for the value.
     type Atomic: gauge::Atomic<Self> + Default + fmt::Debug;
-
+    /// Encodes this value for exporting.
     fn encode(self) -> EncodedGaugeValue;
 }
 
@@ -42,6 +50,9 @@ impl GaugeValue for u64 {
     }
 }
 
+/// Thin wrapper around [`AtomicU64`] used as atomic store for `u64`.
+///
+/// A separate type is necessary to circumvent Rust orphaning rules.
 #[derive(Debug, Default)]
 pub struct AtomicU64Wrapper(AtomicU64);
 
@@ -85,6 +96,9 @@ impl GaugeValue for usize {
     }
 }
 
+/// Thin wrapper around [`AtomicUsize`] used as atomic store for `usize`.
+///
+/// A separate type is necessary to circumvent Rust orphaning rules.
 #[derive(Debug, Default)]
 pub struct AtomicUsizeWrapper(AtomicUsize);
 
@@ -98,6 +112,9 @@ impl GaugeValue for isize {
     }
 }
 
+/// Thin wrapper around [`AtomicIsize`] used as atomic store for `isize`.
+///
+/// A separate type is necessary to circumvent Rust orphaning rules.
 #[derive(Debug, Default)]
 pub struct AtomicIsizeWrapper(AtomicIsize);
 
@@ -145,7 +162,14 @@ impl gauge::Atomic<Duration> for AtomicU64Wrapper {
     }
 }
 
+/// Value of a [`Histogram`](crate::Histogram).
+///
+/// This trait is implemented for signed and unsigned integers (`i64`, `u64`, `isize`, `usize`),
+/// `f64` and [`Duration`]. To use smaller ints and floats as `Histogram` values,
+/// they can be converted to their larger-sized variants (e.g., `i16` to `i64`, `u32` to `u64`,
+/// and `f32` to `f64`).
 pub trait HistogramValue: 'static + Copy + fmt::Debug {
+    /// Encodes this value for exporting.
     fn encode(self) -> f64;
 }
 

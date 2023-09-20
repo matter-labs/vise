@@ -29,6 +29,8 @@ use crate::{
 ///
 /// Gauges are integer or floating-point values that can go up or down. Logically, a reported gauge value
 /// can be treated as valid until the next value is reported.
+///
+/// Gauge values must implement the [`GaugeValue`] trait.
 pub struct Gauge<V: GaugeValue = i64>(GaugeInner<V, V::Atomic>);
 
 impl<V: GaugeValue> fmt::Debug for Gauge<V> {
@@ -96,6 +98,8 @@ impl<V: GaugeValue> TypedMetric for Gauge<V> {
 ///
 /// Histograms are floating-point values counted in configurable buckets. Logically, a histogram observes
 /// a certain probability distribution, and observations are transient (unlike gauge values).
+///
+/// Histogram values must implement the [`HistogramValue`] trait.
 #[derive(Debug)]
 pub struct Histogram<V: HistogramValue = f64> {
     inner: HistogramInner,
