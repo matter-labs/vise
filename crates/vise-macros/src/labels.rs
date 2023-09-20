@@ -4,13 +4,73 @@ use std::fmt;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Attribute, Data, DeriveInput, Field, Ident, LitStr, Path, PathArguments, Type};
+use syn::{Attribute, Data, DeriveInput, Field, Fields, Ident, LitStr, Path, PathArguments, Type};
 
 use crate::utils::{metrics_attribute, validate_name, ParseAttribute};
+
+#[derive(Debug, Clone, Copy)]
+#[allow(clippy::enum_variant_names)]
+enum RenameRule {
+    LowerCase,
+    UpperCase,
+    CamelCase,
+    SnakeCase,
+    ScreamingSnakeCase,
+    KebabCase,
+    ScreamingKebabCase,
+}
+
+impl RenameRule {
+    fn parse(s: &str) -> Result<Self, &'static str> {
+        Ok(match s {
+            "lowercase" => Self::LowerCase,
+            "UPPERCASE" => Self::UpperCase,
+            "camelCase" => Self::CamelCase,
+            "snake_case" => Self::SnakeCase,
+            "SCREAMING_SNAKE_CASE" => Self::ScreamingSnakeCase,
+            "kebab-case" => Self::KebabCase,
+            "SCREAMING-KEBAB-CASE" => Self::ScreamingKebabCase,
+            _ => {
+                return Err(
+                    "Invalid case specified; should be one of: lowercase, UPPERCASE, camelCase, \
+                     snake_case, SCREAMING_SNAKE_CASE, kebab-case, SCREAMING-KEBAB-CASE",
+                )
+            }
+        })
+    }
+
+    fn transform(self, ident: &str) -> String {
+        debug_assert!(ident.is_ascii()); // Should be checked previously
+        let (spacing_char, scream) = match self {
+            Self::LowerCase => return ident.to_ascii_lowercase(),
+            Self::UpperCase => return ident.to_ascii_uppercase(),
+            Self::CamelCase => return ident[..1].to_ascii_lowercase() + &ident[1..],
+            // ^ Since `ident` is an ASCII string, indexing is safe
+            Self::SnakeCase => ('_', false),
+            Self::ScreamingSnakeCase => ('_', true),
+            Self::KebabCase => ('-', false),
+            Self::ScreamingKebabCase => ('-', true),
+        };
+
+        let mut output = String::with_capacity(ident.len());
+        for (i, ch) in ident.char_indices() {
+            if i > 0 && ch.is_ascii_uppercase() {
+                output.push(spacing_char);
+            }
+            output.push(if scream {
+                ch.to_ascii_uppercase()
+            } else {
+                ch.to_ascii_lowercase()
+            });
+        }
+        output
+    }
+}
 
 #[derive(Default)]
 struct EncodeLabelAttrs {
     cr: Option<Path>,
+    rename_all: Option<RenameRule>,
     format: Option<LitStr>,
     label: Option<LitStr>,
 }
@@ -20,6 +80,7 @@ impl fmt::Debug for EncodeLabelAttrs {
         formatter
             .debug_struct("EncodeLabelAttrs")
             .field("cr", &self.cr.as_ref().map(|_| "_"))
+            .field("rename_all", &self.rename_all)
             .field("format", &self.format.as_ref().map(|_| "_"))
             .field("label", &self.label.as_ref().map(|_| "_"))
             .finish()
@@ -32,6 +93,12 @@ impl ParseAttribute for EncodeLabelAttrs {
         raw.parse_nested_meta(|meta| {
             if meta.path.is_ident("crate") {
                 attrs.cr = Some(meta.value()?.parse()?);
+                Ok(())
+            } else if meta.path.is_ident("rename_all") {
+                let case_str: LitStr = meta.value()?.parse()?;
+                let case = RenameRule::parse(&case_str.value())
+                    .map_err(|message| syn::Error::new(case_str.span(), message))?;
+                attrs.rename_all = Some(case);
                 Ok(())
             } else if meta.path.is_ident("format") {
                 attrs.format = Some(meta.value()?.parse()?);
@@ -50,17 +117,71 @@ impl ParseAttribute for EncodeLabelAttrs {
 }
 
 #[derive(Debug)]
+struct EnumVariant {
+    ident: Ident,
+    label_value: String,
+}
+
+impl EnumVariant {
+    fn encode(&self) -> proc_macro2::TokenStream {
+        let ident = &self.ident;
+        let label_value = &self.label_value;
+        quote!(Self::#ident => #label_value)
+    }
+}
+
+#[derive(Debug)]
 struct EncodeLabelValueImpl {
     attrs: EncodeLabelAttrs,
     name: Ident,
+    enum_variants: Option<Vec<EnumVariant>>,
 }
 
 impl EncodeLabelValueImpl {
     fn new(raw: &DeriveInput) -> syn::Result<Self> {
+        let attrs: EncodeLabelAttrs = metrics_attribute(&raw.attrs)?;
+        if let Some(format) = &attrs.format {
+            if attrs.rename_all.is_some() {
+                let message = "`rename_all` and `format` attributes cannot be specified together";
+                return Err(syn::Error::new(format.span(), message));
+            }
+        }
+
+        let enum_variants = attrs
+            .rename_all
+            .map(|case| Self::extract_enum_variants(raw, case))
+            .transpose()?;
+
         Ok(Self {
-            attrs: metrics_attribute(&raw.attrs)?,
+            attrs,
+            enum_variants,
             name: raw.ident.clone(),
         })
+    }
+
+    fn extract_enum_variants(raw: &DeriveInput, case: RenameRule) -> syn::Result<Vec<EnumVariant>> {
+        let Data::Enum(data) = &raw.data else {
+            let message = "`rename_all` attribute can only be placed on enums";
+            return Err(syn::Error::new_spanned(raw, message));
+        };
+        let variants = data.variants.iter().map(|variant| {
+            if !matches!(variant.fields, Fields::Unit) {
+                let message = "To use `rename_all` attribute, all enum variants must be plain \
+                    (have no fields)";
+                return Err(syn::Error::new_spanned(variant, message));
+            }
+            let ident_str = variant.ident.to_string();
+            if !ident_str.is_ascii() {
+                let message = "Variant name must consist of ASCII chars";
+                return Err(syn::Error::new(variant.ident.span(), message));
+            }
+
+            Ok(EnumVariant {
+                ident: variant.ident.clone(),
+                label_value: case.transform(&ident_str),
+            })
+        });
+        variants.collect()
     }
 
     fn impl_value(&self) -> proc_macro2::TokenStream {
@@ -72,12 +193,27 @@ impl EncodeLabelValueImpl {
         let name = &self.name;
         let encoding = quote!(#cr::_reexports::encoding);
 
-        let format_lit;
-        let format = if let Some(format) = &self.attrs.format {
-            format
+        let encode_impl = if let Some(enum_variants) = &self.enum_variants {
+            let variant_hands = enum_variants.iter().map(EnumVariant::encode);
+            quote! {
+                use core::fmt::Write as _;
+                core::write!(encoder, "{}", match self {
+                    #(#variant_hands,)*
+                })
+            }
         } else {
-            format_lit = LitStr::new("{}", name.span());
-            &format_lit
+            let format_lit;
+            let format = if let Some(format) = &self.attrs.format {
+                format
+            } else {
+                format_lit = LitStr::new("{}", name.span());
+                &format_lit
+            };
+
+            quote! {
+                use core::fmt::Write as _;
+                core::write!(encoder, #format, self)
+            }
         };
 
         quote! {
@@ -86,8 +222,7 @@ impl EncodeLabelValueImpl {
                     &self,
                     encoder: &mut #encoding::LabelValueEncoder<'_>,
                 ) -> core::fmt::Result {
-                    use core::fmt::Write as _;
-                    core::write!(encoder, #format, self)
+                    #encode_impl
                 }
             }
         }
@@ -216,7 +351,7 @@ struct EncodeLabelSetImpl {
 
 impl EncodeLabelSetImpl {
     fn new(raw: &DeriveInput) -> syn::Result<Self> {
-        let EncodeLabelValueImpl { attrs, name } = EncodeLabelValueImpl::new(raw)?;
+        let EncodeLabelValueImpl { attrs, name, .. } = EncodeLabelValueImpl::new(raw)?;
 
         let fields = if attrs.label.is_some() {
             None
@@ -301,6 +436,23 @@ pub(crate) fn impl_encode_label_set(input: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renaming_rules() {
+        let ident = "TestIdent";
+        let rules_and_expected_outcomes = [
+            (RenameRule::LowerCase, "testident"),
+            (RenameRule::UpperCase, "TESTIDENT"),
+            (RenameRule::CamelCase, "testIdent"),
+            (RenameRule::SnakeCase, "test_ident"),
+            (RenameRule::ScreamingSnakeCase, "TEST_IDENT"),
+            (RenameRule::KebabCase, "test-ident"),
+            (RenameRule::ScreamingKebabCase, "TEST-IDENT"),
+        ];
+        for (rule, expected) in rules_and_expected_outcomes {
+            assert_eq!(rule.transform(ident), expected);
+        }
+    }
 
     #[test]
     fn encoding_label_set() {

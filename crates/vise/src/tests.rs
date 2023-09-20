@@ -226,3 +226,62 @@ fn label_with_raw_ident() {
         "{lines:#?}"
     );
 }
+
+#[test]
+fn renamed_labels() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelValue, EncodeLabelSet)]
+    #[metrics(crate = crate, rename_all = "snake_case", label = "kind")]
+    enum KindLabel {
+        First,
+        Second,
+        ThirdOrMore,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelValue, EncodeLabelSet)]
+    #[metrics(crate = crate, rename_all = "SCREAMING-KEBAB-CASE", label = "kind")]
+    enum ScreamingLabel {
+        Postgres,
+        MySql,
+    }
+
+    #[derive(Debug, Metrics)]
+    #[metrics(crate = crate, prefix = "test")]
+    struct MetricsWithLabels {
+        counters: Family<KindLabel, Counter>,
+        gauges: Family<ScreamingLabel, Gauge>,
+    }
+
+    let test_metrics = MetricsWithLabels::default();
+    test_metrics.counters[&KindLabel::First].inc();
+    test_metrics.counters[&KindLabel::Second].inc_by(23);
+    test_metrics.counters[&KindLabel::ThirdOrMore].inc_by(42);
+    test_metrics.gauges[&ScreamingLabel::Postgres].set(5);
+    test_metrics.gauges[&ScreamingLabel::MySql].set(3);
+
+    let mut registry = Registry::empty();
+    registry.register_metrics(&test_metrics);
+    let mut buffer = String::new();
+    registry.encode_to_text(&mut buffer).unwrap();
+    let lines: Vec<_> = buffer.lines().collect();
+
+    assert!(
+        lines.contains(&r#"test_counters_total{kind="first"} 1"#),
+        "{lines:#?}"
+    );
+    assert!(
+        lines.contains(&r#"test_counters_total{kind="second"} 23"#),
+        "{lines:#?}"
+    );
+    assert!(
+        lines.contains(&r#"test_counters_total{kind="third_or_more"} 42"#),
+        "{lines:#?}"
+    );
+    assert!(
+        lines.contains(&r#"test_gauges{kind="POSTGRES"} 5"#),
+        "{lines:#?}"
+    );
+    assert!(
+        lines.contains(&r#"test_gauges{kind="MY-SQL"} 3"#),
+        "{lines:#?}"
+    );
+}
