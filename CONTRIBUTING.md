@@ -1,7 +1,7 @@
 # Contribution Guidelines
 
-Hello! Thanks for your interest in joining the mission to accelerate the mass adoption of crypto for personal
-sovereignty! We welcome contributions from anyone on the internet, and are grateful for even the smallest of fixes!
+Hello! Thanks for your interest in `vise`! We welcome contributions from anyone on the internet, and are grateful
+for even the smallest of fixes!
 
 ## Ways to contribute
 
@@ -30,7 +30,7 @@ and [the MIT license](LICENSE-MIT).
 
 ## Resources
 
-We aim to make it as easy as possible to contribute to the mission. This is still WIP, and we're happy for contributions
+We aim to make it as easy as possible to contribute. This is still WIP, and we're happy for contributions
 and suggestions here too. Some resources to help:
 
 1. Developer docs can be found in [repo's readme](README.md)
