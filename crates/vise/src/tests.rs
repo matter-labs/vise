@@ -233,6 +233,7 @@ fn renamed_labels() {
     #[metrics(crate = crate, rename_all = "snake_case", label = "kind")]
     enum KindLabel {
         First,
+        #[metrics(name = "2nd")]
         Second,
         ThirdOrMore,
     }
@@ -269,7 +270,7 @@ fn renamed_labels() {
         "{lines:#?}"
     );
     assert!(
-        lines.contains(&r#"test_counters_total{kind="second"} 23"#),
+        lines.contains(&r#"test_counters_total{kind="2nd"} 23"#),
         "{lines:#?}"
     );
     assert!(

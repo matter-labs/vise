@@ -144,12 +144,19 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 /// **Type:** string; one of `lowercase`, `UPPERCASE`, `camelCase`, `snake_case`, `SCREAMING_SNAKE_CASE`,
 /// `kebab-case`, `SCREAMING-KEBAB-CASE`
 ///
-/// **Default value:** not set
-///
 /// Specifies how enum variant names should be transformed into label values. This attribute
 /// can only be placed on enums in which all variants don't have fields (aka C-style enums).
 ///
 /// Mutually exclusive with the `format` attribute.
+///
+/// # Variant attributes
+///
+/// ## `name`
+///
+/// **Type:** string
+///
+/// Specifies the name override for a particular enum variant when used with the `rename_all` attribute
+/// described above.
 ///
 /// # Examples
 ///
@@ -187,6 +194,8 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 /// enum Database {
 ///     Postgres, // renamed to "postgres"
 ///     MySql, // renamed to "my_sql"
+///     #[metrics(name = "rocksdb")] // explicitly overrides the name
+///     RocksDB,
 /// }
 /// ```
 pub use vise_macros::EncodeLabelValue;

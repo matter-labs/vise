@@ -81,8 +81,8 @@ impl fmt::Debug for EncodeLabelAttrs {
             .debug_struct("EncodeLabelAttrs")
             .field("cr", &self.cr.as_ref().map(|_| "_"))
             .field("rename_all", &self.rename_all)
-            .field("format", &self.format.as_ref().map(|_| "_"))
-            .field("label", &self.label.as_ref().map(|_| "_"))
+            .field("format", &self.format.as_ref().map(LitStr::value))
+            .field("label", &self.label.as_ref().map(LitStr::value))
             .finish()
     }
 }
@@ -127,6 +127,35 @@ impl EnumVariant {
         let ident = &self.ident;
         let label_value = &self.label_value;
         quote!(Self::#ident => #label_value)
+    }
+}
+
+#[derive(Default)]
+struct EnumVariantAttrs {
+    name: Option<LitStr>,
+}
+
+impl fmt::Debug for EnumVariantAttrs {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EnumVariantAttrs")
+            .field("name", &self.name.as_ref().map(LitStr::value))
+            .finish()
+    }
+}
+
+impl ParseAttribute for EnumVariantAttrs {
+    fn parse(raw: &Attribute) -> syn::Result<Self> {
+        let mut attrs = Self::default();
+        raw.parse_nested_meta(|meta| {
+            if meta.path.is_ident("name") {
+                attrs.name = Some(meta.value()?.parse()?);
+                Ok(())
+            } else {
+                Err(meta.error("unsupported attribute"))
+            }
+        })?;
+        Ok(attrs)
     }
 }
 
@@ -175,10 +204,15 @@ impl EncodeLabelValueImpl {
                 let message = "Variant name must consist of ASCII chars";
                 return Err(syn::Error::new(variant.ident.span(), message));
             }
+            let attrs: EnumVariantAttrs = metrics_attribute(&variant.attrs)?;
 
             Ok(EnumVariant {
                 ident: variant.ident.clone(),
-                label_value: case.transform(&ident_str),
+                label_value: if let Some(name_override) = attrs.name {
+                    name_override.value()
+                } else {
+                    case.transform(&ident_str)
+                },
             })
         });
         variants.collect()
