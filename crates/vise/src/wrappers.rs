@@ -4,10 +4,8 @@ use elsa::sync::FrozenMap;
 use prometheus_client::{
     encoding::{EncodeLabelSet, EncodeMetric, MetricEncoder},
     metrics::{
-        family::MetricConstructor,
-        gauge::{self, Gauge as GaugeInner},
-        histogram::Histogram as HistogramInner,
-        MetricType, TypedMetric,
+        family::MetricConstructor, gauge::Gauge as GaugeInner,
+        histogram::Histogram as HistogramInner, MetricType, TypedMetric,
     },
 };
 
@@ -17,122 +15,22 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     ops,
-    sync::{
-        atomic::{AtomicI64, AtomicU64, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
 
-use crate::{buckets::Buckets, constructor::ConstructMetric};
-
-#[derive(Debug, Clone, Copy)]
-pub enum EncodedGaugeValue {
-    I64(i64),
-    F64(f64),
-}
-
-pub trait GaugeValue: 'static + Copy + fmt::Debug {
-    type Atomic: gauge::Atomic<Self> + Default + fmt::Debug;
-
-    fn encode(self) -> EncodedGaugeValue;
-}
-
-impl GaugeValue for i64 {
-    type Atomic = AtomicI64;
-
-    fn encode(self) -> EncodedGaugeValue {
-        EncodedGaugeValue::I64(self)
-    }
-}
-
-impl GaugeValue for u64 {
-    type Atomic = AtomicU64Wrapper; // Can't use `AtomicU64` due to orphaning rules
-
-    #[allow(clippy::cast_precision_loss)] // OK for reporting
-    fn encode(self) -> EncodedGaugeValue {
-        i64::try_from(self).map_or_else(
-            |_| EncodedGaugeValue::F64(self as f64),
-            EncodedGaugeValue::I64,
-        )
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct AtomicU64Wrapper(AtomicU64);
-
-impl gauge::Atomic<u64> for AtomicU64Wrapper {
-    fn inc(&self) -> u64 {
-        self.inc_by(1)
-    }
-
-    fn inc_by(&self, v: u64) -> u64 {
-        self.0.fetch_add(v, Ordering::Relaxed)
-    }
-
-    fn dec(&self) -> u64 {
-        self.dec_by(1)
-    }
-
-    fn dec_by(&self, v: u64) -> u64 {
-        self.0.fetch_sub(v, Ordering::Relaxed)
-    }
-
-    fn set(&self, v: u64) -> u64 {
-        self.0.swap(v, Ordering::Relaxed)
-    }
-
-    fn get(&self) -> u64 {
-        self.0.load(Ordering::Relaxed)
-    }
-}
-
-impl GaugeValue for f64 {
-    type Atomic = AtomicU64;
-
-    fn encode(self) -> EncodedGaugeValue {
-        EncodedGaugeValue::F64(self)
-    }
-}
-
-impl GaugeValue for Duration {
-    type Atomic = AtomicU64Wrapper;
-
-    fn encode(self) -> EncodedGaugeValue {
-        EncodedGaugeValue::F64(self.as_secs_f64())
-    }
-}
-
-impl gauge::Atomic<Duration> for AtomicU64Wrapper {
-    fn inc(&self) -> Duration {
-        self.inc_by(Duration::from_secs(1))
-    }
-
-    fn inc_by(&self, v: Duration) -> Duration {
-        Duration::from_secs_f64(self.0.inc_by(v.as_secs_f64()))
-    }
-
-    fn dec(&self) -> Duration {
-        self.dec_by(Duration::from_secs(1))
-    }
-
-    fn dec_by(&self, v: Duration) -> Duration {
-        Duration::from_secs_f64(self.0.dec_by(v.as_secs_f64()))
-    }
-
-    fn set(&self, v: Duration) -> Duration {
-        Duration::from_secs_f64(self.0.set(v.as_secs_f64()))
-    }
-
-    fn get(&self) -> Duration {
-        Duration::from_secs_f64(self.0.get())
-    }
-}
+use crate::{
+    buckets::Buckets,
+    constructor::ConstructMetric,
+    traits::{EncodedGaugeValue, GaugeValue, HistogramValue},
+};
 
 /// Gauge metric.
 ///
 /// Gauges are integer or floating-point values that can go up or down. Logically, a reported gauge value
 /// can be treated as valid until the next value is reported.
+///
+/// Gauge values must implement the [`GaugeValue`] trait.
 pub struct Gauge<V: GaugeValue = i64>(GaugeInner<V, V::Atomic>);
 
 impl<V: GaugeValue> fmt::Debug for Gauge<V> {
@@ -196,40 +94,12 @@ impl<V: GaugeValue> TypedMetric for Gauge<V> {
     const TYPE: MetricType = MetricType::Gauge;
 }
 
-pub trait HistogramValue: 'static + Copy + fmt::Debug {
-    fn encode(self) -> f64;
-}
-
-impl HistogramValue for f64 {
-    fn encode(self) -> f64 {
-        self
-    }
-}
-
-impl HistogramValue for Duration {
-    fn encode(self) -> f64 {
-        self.as_secs_f64()
-    }
-}
-
-macro_rules! impl_histogram_value_for_int {
-    ($int:ty) => {
-        impl HistogramValue for $int {
-            fn encode(self) -> f64 {
-                self as f64
-            }
-        }
-    };
-}
-
-impl_histogram_value_for_int!(i64);
-impl_histogram_value_for_int!(u64);
-impl_histogram_value_for_int!(usize);
-
 /// Histogram metric.
 ///
 /// Histograms are floating-point values counted in configurable buckets. Logically, a histogram observes
 /// a certain probability distribution, and observations are transient (unlike gauge values).
+///
+/// Histogram values must implement the [`HistogramValue`] trait.
 #[derive(Debug)]
 pub struct Histogram<V: HistogramValue = f64> {
     inner: HistogramInner,

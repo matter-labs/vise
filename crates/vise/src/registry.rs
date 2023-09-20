@@ -260,3 +260,10 @@ impl<'a> MetricsVisitor<'a> {
         }
     }
 }
+
+/// Collects metrics from this type to registry. This is used by the [`register`](crate::register)
+/// macro to handle registration of [`Global`](crate::Global) metrics and [`Collector`]s.
+pub trait CollectToRegistry: 'static + Send + Sync {
+    #[doc(hidden)] // implementation detail
+    fn collect_to_registry(&'static self, registry: &mut Registry);
+}
