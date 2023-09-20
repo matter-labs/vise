@@ -191,3 +191,38 @@ fn using_label_set() {
     assert!(lines.contains(&r#"test_gauges{name="test"} 1.9"#));
     assert!(lines.contains(&r#"test_gauges{name="test",num="5"} 4.2"#));
 }
+
+#[test]
+fn label_with_raw_ident() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet)]
+    #[metrics(crate = crate)]
+    struct LabelWithRawIdent {
+        r#type: &'static str,
+    }
+
+    impl From<&'static str> for LabelWithRawIdent {
+        fn from(r#type: &'static str) -> Self {
+            Self { r#type }
+        }
+    }
+
+    #[derive(Debug, Metrics)]
+    #[metrics(crate = crate, prefix = "test")]
+    struct MetricsWithLabels {
+        counters: Family<LabelWithRawIdent, Counter>,
+    }
+
+    let test_metrics = MetricsWithLabels::default();
+    test_metrics.counters[&"first".into()].inc();
+
+    let mut registry = Registry::empty();
+    registry.register_metrics(&test_metrics);
+    let mut buffer = String::new();
+    registry.encode_to_text(&mut buffer).unwrap();
+    let lines: Vec<_> = buffer.lines().collect();
+
+    assert!(
+        lines.contains(&r#"test_counters_total{type="first"} 1"#),
+        "{lines:#?}"
+    );
+}

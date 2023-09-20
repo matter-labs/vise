@@ -136,14 +136,25 @@ impl LabelField {
             let message = "Encoded fields must be named";
             syn::Error::new_spanned(raw, message)
         })?;
-        validate_name(&name.to_string())
-            .map_err(|message| syn::Error::new(name.span(), message))?;
 
-        Ok(Self {
+        let this = Self {
             name,
             is_option: Self::detect_is_option(&raw.ty),
             attrs: metrics_attribute(&raw.attrs)?,
-        })
+        };
+        validate_name(&this.label_string())
+            .map_err(|message| syn::Error::new(this.name.span(), message))?;
+        Ok(this)
+    }
+
+    /// Strips the `r#` prefix from raw identifiers.
+    fn label_string(&self) -> String {
+        let label = self.name.to_string();
+        if let Some(stripped) = label.strip_prefix("r#") {
+            stripped.to_owned()
+        } else {
+            label
+        }
     }
 
     fn detect_is_option(ty: &Type) -> bool {
@@ -163,7 +174,7 @@ impl LabelField {
 
     fn encode(&self, encoding: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let name = &self.name;
-        let label = LitStr::new(&self.name.to_string(), name.span());
+        let label = LitStr::new(&self.label_string(), name.span());
 
         // Skip `Option`al fields by default if they are `None`.
         let default_skip: Path;
@@ -285,4 +296,26 @@ pub(crate) fn impl_encode_label_set(input: TokenStream) -> TokenStream {
         Err(err) => return err.into_compile_error().into(),
     };
     trait_impl.impl_set().into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encoding_label_set() {
+        let input: DeriveInput = syn::parse_quote! {
+            struct TestLabels {
+                r#type: &'static str,
+                #[metrics(skip = str::is_empty)]
+                kind: &'static str,
+            }
+        };
+        let label_set = EncodeLabelSetImpl::new(&input).unwrap();
+        let fields = label_set.fields.as_ref().unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].label_string(), "type");
+        assert_eq!(fields[1].label_string(), "kind");
+        assert!(fields[1].attrs.skip.is_some());
+    }
 }
