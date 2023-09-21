@@ -346,8 +346,8 @@ pub mod _reexports {
 }
 
 mod buckets;
+mod builder;
 mod collector;
-mod constructor;
 pub mod descriptors;
 mod metrics;
 mod registry;
@@ -358,8 +358,8 @@ mod wrappers;
 
 pub use crate::{
     buckets::Buckets,
+    builder::{BuildMetric, MetricBuilder},
     collector::Collector,
-    constructor::{ConstructMetric, DefaultConstructor},
     metrics::{Global, Metrics},
     registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
     wrappers::{Family, Gauge, Histogram, LabeledFamily, LatencyObserver},

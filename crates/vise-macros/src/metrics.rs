@@ -152,17 +152,16 @@ impl MetricsField {
 
     fn initialize_default(&self, cr: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let name = &self.name;
-        let mut constructor = if let Some(buckets) = &self.attrs.buckets {
-            quote!(<#cr::Buckets as core::convert::From<_>>::from(#buckets))
-        } else {
-            quote!(#cr::DefaultConstructor)
-        };
+        let mut builder = quote!(#cr::MetricBuilder::new());
+        if let Some(buckets) = &self.attrs.buckets {
+            builder = quote!(#builder.with_buckets(#buckets));
+        }
         if let Some(labels) = &self.attrs.labels {
-            constructor = quote!((#constructor, #labels));
+            builder = quote!(#builder.with_labels(#labels));
         }
 
         quote_spanned! {name.span()=>
-            #name: #cr::ConstructMetric::construct(&#constructor)
+            #name: #cr::BuildMetric::build(#builder)
         }
     }
 

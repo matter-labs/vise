@@ -242,7 +242,8 @@ impl<S: EncodeLabelValue> EncodeLabelValue for LabelRef<'_, S> {
     }
 }
 
-/// Set of metric labels with label names known during compilation.
+/// Set of metric labels with label names known during compilation. Used as output in [`MapLabels`]
+/// implementations.
 #[derive(Debug)]
 pub struct StaticLabelSet<'a, S: 'a> {
     label_keys: &'a [&'static str],
