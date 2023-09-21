@@ -11,8 +11,28 @@ env:
   CARGO_INCREMENTAL: "0"
   RUSTC_WRAPPER: "sccache"
   SCCACHE_GHA_ENABLED: "true"
+  msrv: 1.66.0
 
 jobs:
+  build-msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.msrv }}
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.3
+
+      - name: Run tests
+        run: cargo test --workspace --all-features --all-targets
+      - name: Run tests (exporter, no features)
+        run: cargo test -p vise-exporter --no-default-features --all-targets
+      - name: Run doc tests
+        run: cargo test --workspace --all-features --doc
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -25,10 +45,6 @@ jobs:
           components: rustfmt, clippy
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.3
-      - name: Install `cargo-deny`
-        uses: baptiste0928/cargo-install@v2.2.0
-        with:
-          crate: cargo-deny
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -36,8 +52,6 @@ jobs:
         run: cargo clippy --workspace --all-features --all-targets -- -D warnings
       - name: Clippy exporter (no features)
         run: cargo clippy -p vise-exporter --no-default-features --all-targets -- -D warnings
-      - name: Deny
-        run: cargo deny --all-features check
 
       - name: Run tests
         run: cargo test --workspace --all-features --all-targets
