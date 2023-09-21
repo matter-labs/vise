@@ -81,7 +81,7 @@ impl RegisteredDescriptors {
 /// # Collecting metrics
 ///
 /// You can include [`Metrics`] and [`Collector`]s to a registry manually using [`Self::register_metrics()`]
-/// and [`Self::register_collectors()`]. However, this can become untenable for large apps
+/// and [`Self::register_collector()`]. However, this can become untenable for large apps
 /// with a complex dependency graph. As an alternative, you may use [`register`](crate::register) attributes
 /// to mark [`Metrics`] and [`Collector`]s that should be present in the registry, and then initialize the registry
 /// with [`Self::collect()`].

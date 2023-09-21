@@ -371,7 +371,7 @@ mod wrappers;
 pub use crate::{
     buckets::Buckets,
     builder::{BuildMetric, MetricBuilder},
-    collector::Collector,
+    collector::{BeforeScrapeError, Collector},
     metrics::{Global, Metrics},
     registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
     wrappers::{Family, Gauge, Histogram, LabeledFamily, LatencyObserver},
