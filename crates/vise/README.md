@@ -54,34 +54,22 @@ pub(crate) struct MyMetrics {
     /// by adding the corresponding suffix to it (in this case, `_bytes`).
     #[metrics(unit = Unit::Bytes)]
     pub gauge: Gauge<u64>,
-    /// Group of histograms with the "method" label (see the definition below).
+    /// Group of histograms with the "method" label.
     /// Each `Histogram` or `Family` of `Histogram`s must define buckets; in this case,
     /// we use default buckets for latencies.
-    #[metrics(buckets = Buckets::LATENCIES)]
-    pub latencies: Family<Method, Histogram<Duration>>,
+    #[metrics(buckets = Buckets::LATENCIES, labels = ["method"])]
+    pub latencies: LabeledFamily<&'static str, Histogram<Duration>>,
 }
 
 // Commonly, it makes sense to make metrics available using a static:
 #[vise::register]
 static MY_METRICS: Global<MyMetrics> = Global::new();
 
-/// Isolated metric label. Note the `label` name specification below.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet, EncodeLabelValue)]
-#[metrics(label = "method")]
-pub(crate) struct Method(pub &'static str);
-
-// For the isolated metric label to work, you should implement `Display` for it:
-impl fmt::Display for Method {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}", self.0)
-    }
-}
-
 // Metrics are singletons globally available using the `instance()` method.
 MY_METRICS.counter.inc();
 assert_eq!(MY_METRICS.counter.get(), 1); // Useful for testing
 
-let latency = MY_METRICS.latencies[&Method("test")].start();
+let latency = MY_METRICS.latencies[&"test"].start();
 // Do some work...
 let latency: Duration = latency.observe();
 // `latency` can be used in logging etc.
