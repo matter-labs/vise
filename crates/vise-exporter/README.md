@@ -4,6 +4,9 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](https://github.com/matter-labs/vise#license)
 ![rust 1.66+ required](https://img.shields.io/badge/rust-1.66+-blue.svg?label=Required%20Rust)
 
+**Documentation:**
+[![crate docs (main)](https://img.shields.io/badge/main-yellow.svg?label=docs)](https://matter-labs.github.io/vise/vise_exporter/)
+
 This crate provides a simple [Prometheus] metrics exporter for metrics defined
 using [`vise`]. It is based on the [`hyper`] library and supports both pull-based
 and push-based communication with Prometheus.
