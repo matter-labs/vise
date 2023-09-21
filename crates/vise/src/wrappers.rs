@@ -218,7 +218,73 @@ pub struct Family<S, M: BuildMetric, L = ()> {
     labels: L,
 }
 
-/// FIXME
+/// [`Family`] with separately specified labels.
+///
+/// Separately specifying labels allows to not define newtype wrappers for labels.
+///
+/// # Examples
+///
+/// ## Family with single label
+///
+/// ```
+/// use vise::{Counter, LabeledFamily, Metrics};
+/// # use vise::Registry;
+///
+/// #[derive(Debug, Metrics)]
+/// struct TestMetrics {
+///     #[metrics(labels = ["method"])]
+///     counters: LabeledFamily<&'static str, Counter>,
+/// }
+///
+/// // `counters` are keyed by a `&str`:
+/// let metrics = TestMetrics::default();
+/// metrics.counters[&"test"].inc();
+/// metrics.counters[&"another_test"].inc_by(3);
+/// // In the encoded metrics, these entries will be mentioned as follows:
+/// let entries = [
+///     r#"counters_total{method="test"} 1"#,
+///     r#"counters_total{method="another_test"} 3"#,
+/// ];
+/// # let mut registry = Registry::empty();
+/// # registry.register_metrics(&metrics);
+/// # let mut buffer = String::new();
+/// # registry.encode_to_text(&mut buffer).unwrap();
+/// # for entry in entries {
+/// #     assert!(buffer.contains(&entry), "{buffer}");
+/// # }
+/// ```
+///
+/// ## Family with multiple labels
+///
+/// ```
+/// # use vise::{Buckets, Histogram, LabeledFamily, Metrics, Registry};
+/// # use std::time::Duration;
+/// const LABELS: [&str; 2] = ["method", "code"];
+/// type Labels = (&'static str, u16);
+///
+/// #[derive(Debug, Metrics)]
+/// struct TestMetrics {
+///     #[metrics(labels = LABELS, buckets = Buckets::LATENCIES)]
+///     latencies: LabeledFamily<Labels, Histogram<Duration>, 2>,
+///     // ^ note that label names and type can be extracted elsewhere
+/// }
+///
+/// let metrics = TestMetrics::default();
+/// metrics.latencies[&("call", 200)].observe(Duration::from_millis(25));
+/// metrics.latencies[&("send", 502)].observe(Duration::from_secs(1));
+/// // In the encoded metrics, these entries will be mentioned as follows:
+/// let entries = [
+///     r#"latencies_sum{method="call",code="200"} 0.025"#,
+///     r#"latencies_sum{method="send",code="502"} 1.0"#,
+/// ];
+/// # let mut registry = Registry::empty();
+/// # registry.register_metrics(&metrics);
+/// # let mut buffer = String::new();
+/// # registry.encode_to_text(&mut buffer).unwrap();
+/// # for entry in entries {
+/// #     assert!(buffer.contains(&entry), "{buffer}");
+/// # }
+/// ```
 pub type LabeledFamily<S, M, const N: usize = 1> = Family<S, M, [&'static str; N]>;
 
 impl<S, M, L> fmt::Debug for Family<S, M, L>
