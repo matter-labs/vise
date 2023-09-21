@@ -218,9 +218,17 @@ pub struct Family<S, M: BuildMetric, L = ()> {
     labels: L,
 }
 
-/// [`Family`] with separately specified labels.
+/// [`Family`] with separately specified label names.
 ///
-/// Separately specifying labels allows to not define newtype wrappers for labels.
+/// Separately specifying labels allows to not define newtype wrappers for labels. Instead, labels
+/// (the first type param of `LabeledFamily`) can be specified as values (e.g., `&'static str`
+/// or `u8`), and the label names are provided separately using the `labels = [..]` attribute
+/// with the [`Metrics`](macro@crate::Metrics) derive macro.
+///
+/// - If there's a single label, its value type must be specified directly: `&'static str`.
+/// - If there are several labels, they must be specified as a tuple: `(&'static str, u16)`.
+/// - The number of labels must match the number of label names and the constant param of `LabeledFamily`
+///   (which is set to 1 by default). E.g., for two labels you should use `LabeledFamily<_, _, 2>`.
 ///
 /// # Examples
 ///

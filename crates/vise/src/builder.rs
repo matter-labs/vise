@@ -50,12 +50,9 @@ impl<B> MetricBuilder<B> {
     }
 }
 
-/// Metric that can be constructed from a constructor.
-///
-/// Essentially, this is a dual trait to [`MetricConstructor`] allowing to define a "preferred"
-/// constructor for the metric.
+/// Metric that can be constructed from a [`MetricBuilder`].
 pub trait BuildMetric: 'static + Sized + EncodeMetric + TypedMetric {
-    /// Metric builder.
+    /// Metric builder used to construct a metric.
     type Builder: Copy;
 
     /// Creates a metric given its builder.
