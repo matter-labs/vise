@@ -25,7 +25,8 @@ pub(crate) struct TestMetrics {
     #[metrics(unit = Unit::Bytes)]
     gauge: Gauge<usize>,
     /// Test family of gauges.
-    family_of_gauges: Family<Method, Gauge<f64>>,
+    #[metrics(labels = ["method"])]
+    family_of_gauges: LabeledFamily<&'static str, Gauge<f64>>,
     /// Histogram with inline bucket specification.
     #[metrics(buckets = &[0.001, 0.002, 0.005, 0.01, 0.1])]
     histogram: Histogram<Duration>,
@@ -34,8 +35,8 @@ pub(crate) struct TestMetrics {
     #[metrics(unit = Unit::Seconds, buckets = Buckets::LATENCIES)]
     family_of_histograms: Family<Method, Histogram<Duration>>,
     /// Family of histograms with a reference bucket specification.
-    #[metrics(buckets = Buckets::ZERO_TO_ONE)]
-    histograms_with_buckets: Family<Method, Histogram<Duration>>,
+    #[metrics(buckets = Buckets::ZERO_TO_ONE, labels = ["method"])]
+    histograms_with_buckets: LabeledFamily<&'static str, Histogram<Duration>>,
 }
 
 #[register]
@@ -75,18 +76,18 @@ fn testing_metrics() {
     test_metrics.gauge.set(42);
     assert_eq!(test_metrics.gauge.get(), 42);
 
-    test_metrics.family_of_gauges[&"call".into()].set(0.4);
-    test_metrics.family_of_gauges[&"send_transaction".into()].set(0.5);
+    test_metrics.family_of_gauges[&"call"].set(0.4);
+    test_metrics.family_of_gauges[&"send_transaction"].set(0.5);
 
-    assert!(test_metrics.family_of_gauges.contains(&"call".into()));
-    let gauge = test_metrics.family_of_gauges.get(&"call".into()).unwrap();
+    assert!(test_metrics.family_of_gauges.contains(&"call"));
+    let gauge = test_metrics.family_of_gauges.get(&"call").unwrap();
     assert_eq!(gauge.get(), 0.4);
-    assert!(!test_metrics.family_of_gauges.contains(&"test".into()));
+    assert!(!test_metrics.family_of_gauges.contains(&"test"));
 
     let gauges_in_family = test_metrics.family_of_gauges.to_entries();
     assert_eq!(gauges_in_family.len(), 2);
-    assert_eq!(gauges_in_family[&"call".into()].get(), 0.4);
-    assert_eq!(gauges_in_family[&"send_transaction".into()].get(), 0.5);
+    assert_eq!(gauges_in_family[&"call"].get(), 0.4);
+    assert_eq!(gauges_in_family[&"send_transaction"].get(), 0.5);
 
     test_metrics.histogram.observe(Duration::from_millis(1));
     test_metrics.histogram.observe(Duration::from_micros(1_500));
@@ -94,9 +95,8 @@ fn testing_metrics() {
     test_metrics.histogram.observe(Duration::from_millis(4));
     test_metrics.family_of_histograms[&"call".into()].observe(Duration::from_millis(20));
 
-    test_metrics.histograms_with_buckets[&"call".into()].observe(Duration::from_millis(350));
-    test_metrics.histograms_with_buckets[&"send_transaction".into()]
-        .observe(Duration::from_millis(620));
+    test_metrics.histograms_with_buckets[&"call"].observe(Duration::from_millis(350));
+    test_metrics.histograms_with_buckets[&"send_transaction"].observe(Duration::from_millis(620));
 
     let mut buffer = String::new();
     registry.encode_to_text(&mut buffer).unwrap();
@@ -110,7 +110,10 @@ fn testing_metrics() {
 
     // Full stop is added to the metrics description automatically.
     assert!(lines.contains(&"# HELP test_family_of_gauges Test family of gauges."));
-    assert!(lines.contains(&r#"test_family_of_gauges{method="call"} 0.4"#));
+    assert!(
+        lines.contains(&r#"test_family_of_gauges{method="call"} 0.4"#),
+        "{lines:#?}"
+    );
     assert!(lines.contains(&r#"test_family_of_gauges{method="send_transaction"} 0.5"#));
 
     let histogram_lines = [
@@ -286,3 +289,5 @@ fn renamed_labels() {
         "{lines:#?}"
     );
 }
+
+// FIXME: test `LabeledFamily` more thoroughly

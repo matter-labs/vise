@@ -47,6 +47,7 @@ impl ParseAttribute for MetricsAttrs {
 struct MetricsFieldAttrs {
     buckets: Option<Expr>,
     unit: Option<Expr>,
+    labels: Option<Expr>,
 }
 
 impl fmt::Debug for MetricsFieldAttrs {
@@ -55,6 +56,7 @@ impl fmt::Debug for MetricsFieldAttrs {
             .debug_struct("MetricsFieldAttrs")
             .field("buckets", &self.buckets.as_ref().map(|_| ".."))
             .field("unit", &self.unit.as_ref().map(|_| ".."))
+            .field("labels", &self.labels.as_ref().map(|_| ".."))
             .finish()
     }
 }
@@ -68,6 +70,9 @@ impl ParseAttribute for MetricsFieldAttrs {
                 Ok(())
             } else if meta.path.is_ident("unit") {
                 attrs.unit = Some(meta.value()?.parse()?);
+                Ok(())
+            } else if meta.path.is_ident("labels") {
+                attrs.labels = Some(meta.value()?.parse()?);
                 Ok(())
             } else {
                 Err(meta.error("unsupported attribute"))
@@ -147,11 +152,15 @@ impl MetricsField {
 
     fn initialize_default(&self, cr: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let name = &self.name;
-        let constructor = if let Some(buckets) = &self.attrs.buckets {
+        let mut constructor = if let Some(buckets) = &self.attrs.buckets {
             quote!(<#cr::Buckets as core::convert::From<_>>::from(#buckets))
         } else {
             quote!(#cr::DefaultConstructor)
         };
+        if let Some(labels) = &self.attrs.labels {
+            constructor = quote!((#constructor, #labels));
+        }
+
         quote_spanned! {name.span()=>
             #name: #cr::ConstructMetric::construct(&#constructor)
         }

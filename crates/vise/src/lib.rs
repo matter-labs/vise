@@ -362,7 +362,7 @@ pub use crate::{
     constructor::{ConstructMetric, DefaultConstructor},
     metrics::{Global, Metrics},
     registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
-    wrappers::{Family, Gauge, Histogram, LatencyObserver},
+    wrappers::{Family, Gauge, Histogram, LabeledFamily, LatencyObserver},
 };
 
 #[cfg(doctest)]

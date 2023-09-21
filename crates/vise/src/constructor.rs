@@ -6,9 +6,9 @@ use prometheus_client::{
 use std::hash::Hash;
 
 use crate::{
-    traits::{GaugeValue, HistogramValue},
+    traits::{GaugeValue, HistogramValue, MapLabels},
     wrappers::{Family, Gauge, Histogram},
-    Buckets,
+    Buckets, LabeledFamily,
 };
 
 /// Metric that can be constructed from a constructor.
@@ -66,13 +66,34 @@ where
     type Constructor = C;
 }
 
+impl<const N: usize, S, M, C> ConstructMetric for LabeledFamily<S, M, N>
+where
+    S: 'static,
+    (C, [&'static str; N]): MetricConstructor<LabeledFamily<S, M, N>> + Copy,
+    M: ConstructMetric<Constructor = C>,
+    LabeledFamily<S, M, N>: EncodeMetric,
+{
+    type Constructor = (C, [&'static str; N]);
+}
+
 impl<S, M> MetricConstructor<Family<S, M>> for DefaultConstructor
 where
     S: Clone + Eq + Hash,
     M: ConstructMetric<Constructor = DefaultConstructor>,
 {
     fn new_metric(&self) -> Family<S, M> {
-        Family::new(DefaultConstructor)
+        Family::new(DefaultConstructor, ())
+    }
+}
+
+impl<S, M, L> MetricConstructor<Family<S, M, L>> for (DefaultConstructor, L)
+where
+    S: Clone + Eq + Hash,
+    M: ConstructMetric<Constructor = DefaultConstructor>,
+    L: MapLabels<S>,
+{
+    fn new_metric(&self) -> Family<S, M, L> {
+        Family::new(DefaultConstructor, self.1)
     }
 }
 
@@ -82,6 +103,17 @@ where
     M: ConstructMetric<Constructor = Buckets>,
 {
     fn new_metric(&self) -> Family<S, M> {
-        Family::new(*self)
+        Family::new(*self, ())
+    }
+}
+
+impl<S, M, L> MetricConstructor<Family<S, M, L>> for (Buckets, L)
+where
+    S: Clone + Eq + Hash,
+    M: ConstructMetric<Constructor = Buckets>,
+    L: MapLabels<S>,
+{
+    fn new_metric(&self) -> Family<S, M, L> {
+        Family::new(self.0, self.1)
     }
 }
