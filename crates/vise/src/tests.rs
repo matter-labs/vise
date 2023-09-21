@@ -268,26 +268,58 @@ fn renamed_labels() {
     registry.encode_to_text(&mut buffer).unwrap();
     let lines: Vec<_> = buffer.lines().collect();
 
-    assert!(
-        lines.contains(&r#"test_counters_total{kind="first"} 1"#),
-        "{lines:#?}"
-    );
-    assert!(
-        lines.contains(&r#"test_counters_total{kind="2nd"} 23"#),
-        "{lines:#?}"
-    );
-    assert!(
-        lines.contains(&r#"test_counters_total{kind="third_or_more"} 42"#),
-        "{lines:#?}"
-    );
-    assert!(
-        lines.contains(&r#"test_gauges{kind="POSTGRES"} 5"#),
-        "{lines:#?}"
-    );
-    assert!(
-        lines.contains(&r#"test_gauges{kind="MY-SQL"} 3"#),
-        "{lines:#?}"
-    );
+    let expected_lines = [
+        r#"test_counters_total{kind="first"} 1"#,
+        r#"test_counters_total{kind="2nd"} 23"#,
+        r#"test_counters_total{kind="third_or_more"} 42"#,
+        r#"test_gauges{kind="POSTGRES"} 5"#,
+        r#"test_gauges{kind="MY-SQL"} 3"#,
+    ];
+    for line in expected_lines {
+        assert!(lines.contains(&line), "{lines:#?}");
+    }
 }
 
-// FIXME: test `LabeledFamily` more thoroughly
+#[test]
+fn labeled_family_with_multiple_labels() {
+    type ThreeLabels = (&'static str, &'static str, u8);
+    const LABEL_NAMES: [&str; 3] = ["db", "cf", "code"];
+
+    #[derive(Debug, Metrics)]
+    #[metrics(crate = crate, prefix = "test")]
+    struct MetricsWithLabels {
+        /// Counters labeled by a tuple with the corresponding 2 label names specified via an attribute.
+        #[metrics(labels = ["method", "code"])]
+        counters: LabeledFamily<(&'static str, u16), Counter, 2>,
+        #[metrics(labels = LABEL_NAMES)]
+        gauges: LabeledFamily<ThreeLabels, Gauge<f64>, 3>,
+    }
+
+    let test_metrics = MetricsWithLabels::default();
+    test_metrics.counters[&("call", 200)].inc_by(10);
+    test_metrics.counters[&("call", 400)].inc();
+    test_metrics.counters[&("send_transaction", 200)].inc_by(8);
+    test_metrics.counters[&("send_transaction", 502)].inc_by(3);
+    test_metrics.gauges[&("tree", "default", 0)].set(42.0);
+    test_metrics.gauges[&("tree", "default", 1)].set(23.0);
+    test_metrics.gauges[&("tree", "stale_keys", 0)].set(20.0);
+
+    let mut registry = Registry::empty();
+    registry.register_metrics(&test_metrics);
+    let mut buffer = String::new();
+    registry.encode_to_text(&mut buffer).unwrap();
+    let lines: Vec<_> = buffer.lines().collect();
+
+    let expected_lines = [
+        "test_counters_total{method=\"call\",code=\"400\"} 1",
+        "test_counters_total{method=\"send_transaction\",code=\"502\"} 3",
+        "test_counters_total{method=\"send_transaction\",code=\"200\"} 8",
+        "test_counters_total{method=\"call\",code=\"200\"} 10",
+        "test_gauges{db=\"tree\",cf=\"default\",code=\"0\"} 42.0",
+        "test_gauges{db=\"tree\",cf=\"default\",code=\"1\"} 23.0",
+        "test_gauges{db=\"tree\",cf=\"stale_keys\",code=\"0\"} 20.0",
+    ];
+    for line in expected_lines {
+        assert!(lines.contains(&line), "{lines:#?}");
+    }
+}
