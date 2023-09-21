@@ -1,6 +1,9 @@
 //! Traits used for metric definitions, such as [`GaugeValue`] and [`HistogramValue`].
 
-use prometheus_client::metrics::gauge;
+use prometheus_client::{
+    encoding::{EncodeLabel, EncodeLabelSet, EncodeLabelValue, LabelSetEncoder, LabelValueEncoder},
+    metrics::gauge,
+};
 
 use std::{
     fmt,
@@ -199,3 +202,105 @@ impl_histogram_value_for_int!(i64);
 impl_histogram_value_for_int!(u64);
 impl_histogram_value_for_int!(usize);
 impl_histogram_value_for_int!(isize);
+
+/// Maps a set of labels from the storage format (i.e., how labels are stored in a [`Family`](crate::Family))
+/// to the encoding format, which is used when [exporting metrics](crate::Registry::encode()).
+pub trait MapLabels<S>: Copy {
+    /// Result of the mapping.
+    type Output<'a>: EncodeLabelSet
+    where
+        Self: 'a,
+        S: 'a;
+    /// Performs mapping.
+    fn map_labels<'a>(&'a self, labels: &'a S) -> Self::Output<'a>;
+}
+
+/// Identity mapping.
+impl<S: EncodeLabelSet> MapLabels<S> for () {
+    type Output<'a> = LabelRef<'a, S> where S: 'a;
+
+    fn map_labels<'a>(&'a self, labels: &'a S) -> Self::Output<'a> {
+        LabelRef(labels)
+    }
+}
+
+/// Wrapper around a reference to labels proxying necessary trait implementations.
+// We cannot use a reference directly because there are no blanket implementations for `EncodeLabelSet`
+// and `EncodeLabelValue`.
+#[derive(Debug)]
+pub struct LabelRef<'a, S>(pub &'a S);
+
+impl<S: EncodeLabelSet> EncodeLabelSet for LabelRef<'_, S> {
+    fn encode(&self, encoder: LabelSetEncoder) -> fmt::Result {
+        self.0.encode(encoder)
+    }
+}
+
+impl<S: EncodeLabelValue> EncodeLabelValue for LabelRef<'_, S> {
+    fn encode(&self, encoder: &mut LabelValueEncoder) -> fmt::Result {
+        self.0.encode(encoder)
+    }
+}
+
+/// Set of metric labels with label names known during compilation. Used as output in [`MapLabels`]
+/// implementations.
+#[derive(Debug)]
+pub struct StaticLabelSet<'a, S: 'a> {
+    label_keys: &'a [&'static str],
+    label_values: S,
+}
+
+impl<S: EncodeLabelValue> MapLabels<S> for [&'static str; 1] {
+    type Output<'a> = StaticLabelSet<'a, (&'a S,)> where S: 'a;
+
+    fn map_labels<'a>(&'a self, labels: &'a S) -> Self::Output<'a> {
+        StaticLabelSet {
+            label_keys: self,
+            label_values: (labels,),
+        }
+    }
+}
+
+macro_rules! impl_map_labels {
+    ($len:tt => $($idx:tt : $typ:ident),+) => {
+        impl<$($typ,)+> MapLabels<($($typ,)+)> for [&'static str; $len]
+        where
+            $($typ: EncodeLabelValue,)+
+        {
+            type Output<'a> = StaticLabelSet<'a, ($(&'a $typ,)+)> where $($typ: 'a,)+;
+
+            fn map_labels<'a>(&'a self, labels: &'a ($($typ,)+)) -> Self::Output<'a> {
+                StaticLabelSet {
+                    label_keys: self,
+                    label_values: ($(&labels.$idx,)+),
+                }
+            }
+        }
+    };
+}
+
+impl_map_labels!(2 => 0: S0, 1: S1);
+impl_map_labels!(3 => 0: S0, 1: S1, 2: S2);
+impl_map_labels!(4 => 0: S0, 1: S1, 2: S2, 3: S3);
+
+macro_rules! impl_encode_for_static_label_set {
+    ($len:tt => $($idx:tt : $typ:ident),+) => {
+        impl<'a, $($typ,)+> EncodeLabelSet for StaticLabelSet<'a, ($(&'a $typ,)+)>
+        where
+            $($typ: EncodeLabelValue,)+
+        {
+            fn encode(&self, mut encoder: LabelSetEncoder) -> fmt::Result {
+                $(
+                let label = (self.label_keys[$idx], LabelRef(self.label_values.$idx));
+                EncodeLabel::encode(&label, encoder.encode_label())?;
+                )+
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_encode_for_static_label_set!(1 => 0: S);
+impl_encode_for_static_label_set!(2 => 0: S0, 1: S1);
+impl_encode_for_static_label_set!(3 => 0: S0, 1: S1, 2: S2);
+impl_encode_for_static_label_set!(4 => 0: S0, 1: S1, 2: S2, 3: S3);

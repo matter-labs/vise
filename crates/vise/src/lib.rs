@@ -299,6 +299,18 @@ pub use vise_macros::EncodeLabelSet;
 /// **Type:** expression evaluating to [`Unit`]
 ///
 /// Specifies unit of measurement for a metric. Note that specifying a unit influences the metric naming.
+///
+/// ## `labels`
+///
+/// **Type:** expression evaluating to an array `[&'static str; _]`
+///
+/// Specifies label names for a [`LabeledFamily`]. This attribute is mandatory for [`LabeledFamily`]
+/// and will result in a compile-time error if used with other metric types. The number of label names
+/// must match the number of label values in the `LabeledFamily` (i.e., its type).
+///
+/// # Examples
+///
+/// See crate-level docs and other crate docs for the examples of usage.
 pub use vise_macros::Metrics;
 
 /// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
@@ -346,8 +358,8 @@ pub mod _reexports {
 }
 
 mod buckets;
+mod builder;
 mod collector;
-mod constructor;
 pub mod descriptors;
 mod metrics;
 mod registry;
@@ -358,11 +370,11 @@ mod wrappers;
 
 pub use crate::{
     buckets::Buckets,
+    builder::{BuildMetric, MetricBuilder},
     collector::Collector,
-    constructor::{ConstructMetric, DefaultConstructor},
     metrics::{Global, Metrics},
     registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
-    wrappers::{Family, Gauge, Histogram, LatencyObserver},
+    wrappers::{Family, Gauge, Histogram, LabeledFamily, LatencyObserver},
 };
 
 #[cfg(doctest)]

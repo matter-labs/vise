@@ -25,7 +25,8 @@ pub(crate) struct TestMetrics {
     #[metrics(unit = Unit::Bytes)]
     gauge: Gauge<usize>,
     /// Test family of gauges.
-    family_of_gauges: Family<Method, Gauge<f64>>,
+    #[metrics(labels = ["method"])]
+    family_of_gauges: LabeledFamily<&'static str, Gauge<f64>>,
     /// Histogram with inline bucket specification.
     #[metrics(buckets = &[0.001, 0.002, 0.005, 0.01, 0.1])]
     histogram: Histogram<Duration>,
@@ -34,8 +35,8 @@ pub(crate) struct TestMetrics {
     #[metrics(unit = Unit::Seconds, buckets = Buckets::LATENCIES)]
     family_of_histograms: Family<Method, Histogram<Duration>>,
     /// Family of histograms with a reference bucket specification.
-    #[metrics(buckets = Buckets::ZERO_TO_ONE)]
-    histograms_with_buckets: Family<Method, Histogram<Duration>>,
+    #[metrics(buckets = Buckets::ZERO_TO_ONE, labels = ["method"])]
+    histograms_with_buckets: LabeledFamily<&'static str, Histogram<Duration>>,
 }
 
 #[register]
@@ -75,18 +76,18 @@ fn testing_metrics() {
     test_metrics.gauge.set(42);
     assert_eq!(test_metrics.gauge.get(), 42);
 
-    test_metrics.family_of_gauges[&"call".into()].set(0.4);
-    test_metrics.family_of_gauges[&"send_transaction".into()].set(0.5);
+    test_metrics.family_of_gauges[&"call"].set(0.4);
+    test_metrics.family_of_gauges[&"send_transaction"].set(0.5);
 
-    assert!(test_metrics.family_of_gauges.contains(&"call".into()));
-    let gauge = test_metrics.family_of_gauges.get(&"call".into()).unwrap();
+    assert!(test_metrics.family_of_gauges.contains(&"call"));
+    let gauge = test_metrics.family_of_gauges.get(&"call").unwrap();
     assert_eq!(gauge.get(), 0.4);
-    assert!(!test_metrics.family_of_gauges.contains(&"test".into()));
+    assert!(!test_metrics.family_of_gauges.contains(&"test"));
 
     let gauges_in_family = test_metrics.family_of_gauges.to_entries();
     assert_eq!(gauges_in_family.len(), 2);
-    assert_eq!(gauges_in_family[&"call".into()].get(), 0.4);
-    assert_eq!(gauges_in_family[&"send_transaction".into()].get(), 0.5);
+    assert_eq!(gauges_in_family[&"call"].get(), 0.4);
+    assert_eq!(gauges_in_family[&"send_transaction"].get(), 0.5);
 
     test_metrics.histogram.observe(Duration::from_millis(1));
     test_metrics.histogram.observe(Duration::from_micros(1_500));
@@ -94,9 +95,8 @@ fn testing_metrics() {
     test_metrics.histogram.observe(Duration::from_millis(4));
     test_metrics.family_of_histograms[&"call".into()].observe(Duration::from_millis(20));
 
-    test_metrics.histograms_with_buckets[&"call".into()].observe(Duration::from_millis(350));
-    test_metrics.histograms_with_buckets[&"send_transaction".into()]
-        .observe(Duration::from_millis(620));
+    test_metrics.histograms_with_buckets[&"call"].observe(Duration::from_millis(350));
+    test_metrics.histograms_with_buckets[&"send_transaction"].observe(Duration::from_millis(620));
 
     let mut buffer = String::new();
     registry.encode_to_text(&mut buffer).unwrap();
@@ -110,7 +110,10 @@ fn testing_metrics() {
 
     // Full stop is added to the metrics description automatically.
     assert!(lines.contains(&"# HELP test_family_of_gauges Test family of gauges."));
-    assert!(lines.contains(&r#"test_family_of_gauges{method="call"} 0.4"#));
+    assert!(
+        lines.contains(&r#"test_family_of_gauges{method="call"} 0.4"#),
+        "{lines:#?}"
+    );
     assert!(lines.contains(&r#"test_family_of_gauges{method="send_transaction"} 0.5"#));
 
     let histogram_lines = [
@@ -265,24 +268,58 @@ fn renamed_labels() {
     registry.encode_to_text(&mut buffer).unwrap();
     let lines: Vec<_> = buffer.lines().collect();
 
-    assert!(
-        lines.contains(&r#"test_counters_total{kind="first"} 1"#),
-        "{lines:#?}"
-    );
-    assert!(
-        lines.contains(&r#"test_counters_total{kind="2nd"} 23"#),
-        "{lines:#?}"
-    );
-    assert!(
-        lines.contains(&r#"test_counters_total{kind="third_or_more"} 42"#),
-        "{lines:#?}"
-    );
-    assert!(
-        lines.contains(&r#"test_gauges{kind="POSTGRES"} 5"#),
-        "{lines:#?}"
-    );
-    assert!(
-        lines.contains(&r#"test_gauges{kind="MY-SQL"} 3"#),
-        "{lines:#?}"
-    );
+    let expected_lines = [
+        r#"test_counters_total{kind="first"} 1"#,
+        r#"test_counters_total{kind="2nd"} 23"#,
+        r#"test_counters_total{kind="third_or_more"} 42"#,
+        r#"test_gauges{kind="POSTGRES"} 5"#,
+        r#"test_gauges{kind="MY-SQL"} 3"#,
+    ];
+    for line in expected_lines {
+        assert!(lines.contains(&line), "{lines:#?}");
+    }
+}
+
+#[test]
+fn labeled_family_with_multiple_labels() {
+    type ThreeLabels = (&'static str, &'static str, u8);
+    const LABEL_NAMES: [&str; 3] = ["db", "cf", "code"];
+
+    #[derive(Debug, Metrics)]
+    #[metrics(crate = crate, prefix = "test")]
+    struct MetricsWithLabels {
+        /// Counters labeled by a tuple with the corresponding 2 label names specified via an attribute.
+        #[metrics(labels = ["method", "code"])]
+        counters: LabeledFamily<(&'static str, u16), Counter, 2>,
+        #[metrics(labels = LABEL_NAMES)]
+        gauges: LabeledFamily<ThreeLabels, Gauge<f64>, 3>,
+    }
+
+    let test_metrics = MetricsWithLabels::default();
+    test_metrics.counters[&("call", 200)].inc_by(10);
+    test_metrics.counters[&("call", 400)].inc();
+    test_metrics.counters[&("send_transaction", 200)].inc_by(8);
+    test_metrics.counters[&("send_transaction", 502)].inc_by(3);
+    test_metrics.gauges[&("tree", "default", 0)].set(42.0);
+    test_metrics.gauges[&("tree", "default", 1)].set(23.0);
+    test_metrics.gauges[&("tree", "stale_keys", 0)].set(20.0);
+
+    let mut registry = Registry::empty();
+    registry.register_metrics(&test_metrics);
+    let mut buffer = String::new();
+    registry.encode_to_text(&mut buffer).unwrap();
+    let lines: Vec<_> = buffer.lines().collect();
+
+    let expected_lines = [
+        "test_counters_total{method=\"call\",code=\"400\"} 1",
+        "test_counters_total{method=\"send_transaction\",code=\"502\"} 3",
+        "test_counters_total{method=\"send_transaction\",code=\"200\"} 8",
+        "test_counters_total{method=\"call\",code=\"200\"} 10",
+        "test_gauges{db=\"tree\",cf=\"default\",code=\"0\"} 42.0",
+        "test_gauges{db=\"tree\",cf=\"default\",code=\"1\"} 23.0",
+        "test_gauges{db=\"tree\",cf=\"stale_keys\",code=\"0\"} 20.0",
+    ];
+    for line in expected_lines {
+        assert!(lines.contains(&line), "{lines:#?}");
+    }
 }

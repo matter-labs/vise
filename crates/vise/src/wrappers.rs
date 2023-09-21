@@ -2,10 +2,9 @@
 
 use elsa::sync::FrozenMap;
 use prometheus_client::{
-    encoding::{EncodeLabelSet, EncodeMetric, MetricEncoder},
+    encoding::{EncodeMetric, MetricEncoder},
     metrics::{
-        family::MetricConstructor, gauge::Gauge as GaugeInner,
-        histogram::Histogram as HistogramInner, MetricType, TypedMetric,
+        gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner, MetricType, TypedMetric,
     },
 };
 
@@ -21,8 +20,8 @@ use std::{
 
 use crate::{
     buckets::Buckets,
-    constructor::ConstructMetric,
-    traits::{EncodedGaugeValue, GaugeValue, HistogramValue},
+    builder::BuildMetric,
+    traits::{EncodedGaugeValue, GaugeValue, HistogramValue, MapLabels},
 };
 
 /// Gauge metric.
@@ -171,16 +170,16 @@ impl LatencyObserver<'_> {
     }
 }
 
-struct FamilyInner<S, M: ConstructMetric> {
+struct FamilyInner<S, M: BuildMetric> {
     map: FrozenMap<S, Box<M>>,
-    constructor: M::Constructor,
+    builder: M::Builder,
 }
 
 impl<S, M> fmt::Debug for FamilyInner<S, M>
 where
     S: fmt::Debug + Clone + Eq + Hash,
-    M: ConstructMetric + fmt::Debug,
-    M::Constructor: fmt::Debug,
+    M: BuildMetric + fmt::Debug,
+    M::Builder: fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let map_keys = self.map.keys_cloned();
@@ -192,7 +191,7 @@ where
         formatter
             .debug_struct("Family")
             .field("map", &map_snapshot)
-            .field("constructor", &self.constructor)
+            .field("constructor", &self.builder)
             .finish()
     }
 }
@@ -200,69 +199,156 @@ where
 impl<S, M> FamilyInner<S, M>
 where
     S: Clone + Eq + Hash,
-    M: ConstructMetric,
+    M: BuildMetric,
 {
     fn get_or_create(&self, labels: &S) -> &M {
         if let Some(metric) = self.map.get(labels) {
             return metric;
         }
         self.map
-            .insert_with(labels.clone(), || Box::new(self.constructor.new_metric()))
+            .insert_with(labels.clone(), || Box::new(M::build(self.builder)))
     }
 }
 
 /// Family of metrics labelled by one or more labels.
 ///
 /// Family members can be accessed by indexing.
-pub struct Family<S, M: ConstructMetric>(Arc<FamilyInner<S, M>>);
+pub struct Family<S, M: BuildMetric, L = ()> {
+    inner: Arc<FamilyInner<S, M>>,
+    labels: L,
+}
 
-impl<S, M> fmt::Debug for Family<S, M>
+/// [`Family`] with separately specified label names.
+///
+/// Separately specifying labels allows to not define newtype wrappers for labels. Instead, labels
+/// (the first type param of `LabeledFamily`) can be specified as values (e.g., `&'static str`
+/// or `u8`), and the label names are provided separately using the `labels = [..]` attribute
+/// with the [`Metrics`](macro@crate::Metrics) derive macro.
+///
+/// - If there's a single label, its value type must be specified directly: `&'static str`.
+/// - If there are several labels, they must be specified as a tuple: `(&'static str, u16)`.
+/// - The number of labels must match the number of label names and the constant param of `LabeledFamily`
+///   (which is set to 1 by default). E.g., for two labels you should use `LabeledFamily<_, _, 2>`.
+///
+/// # Examples
+///
+/// ## Family with single label
+///
+/// ```
+/// use vise::{Counter, LabeledFamily, Metrics};
+/// # use vise::Registry;
+///
+/// #[derive(Debug, Metrics)]
+/// struct TestMetrics {
+///     #[metrics(labels = ["method"])]
+///     counters: LabeledFamily<&'static str, Counter>,
+/// }
+///
+/// // `counters` are keyed by a `&str`:
+/// let metrics = TestMetrics::default();
+/// metrics.counters[&"test"].inc();
+/// metrics.counters[&"another_test"].inc_by(3);
+/// // In the encoded metrics, these entries will be mentioned as follows:
+/// let entries = [
+///     r#"counters_total{method="test"} 1"#,
+///     r#"counters_total{method="another_test"} 3"#,
+/// ];
+/// # let mut registry = Registry::empty();
+/// # registry.register_metrics(&metrics);
+/// # let mut buffer = String::new();
+/// # registry.encode_to_text(&mut buffer).unwrap();
+/// # for entry in entries {
+/// #     assert!(buffer.contains(&entry), "{buffer}");
+/// # }
+/// ```
+///
+/// ## Family with multiple labels
+///
+/// ```
+/// # use vise::{Buckets, Histogram, LabeledFamily, Metrics, Registry};
+/// # use std::time::Duration;
+/// const LABELS: [&str; 2] = ["method", "code"];
+/// type Labels = (&'static str, u16);
+///
+/// #[derive(Debug, Metrics)]
+/// struct TestMetrics {
+///     #[metrics(labels = LABELS, buckets = Buckets::LATENCIES)]
+///     latencies: LabeledFamily<Labels, Histogram<Duration>, 2>,
+///     // ^ note that label names and type can be extracted elsewhere
+/// }
+///
+/// let metrics = TestMetrics::default();
+/// metrics.latencies[&("call", 200)].observe(Duration::from_millis(25));
+/// metrics.latencies[&("send", 502)].observe(Duration::from_secs(1));
+/// // In the encoded metrics, these entries will be mentioned as follows:
+/// let entries = [
+///     r#"latencies_sum{method="call",code="200"} 0.025"#,
+///     r#"latencies_sum{method="send",code="502"} 1.0"#,
+/// ];
+/// # let mut registry = Registry::empty();
+/// # registry.register_metrics(&metrics);
+/// # let mut buffer = String::new();
+/// # registry.encode_to_text(&mut buffer).unwrap();
+/// # for entry in entries {
+/// #     assert!(buffer.contains(&entry), "{buffer}");
+/// # }
+/// ```
+pub type LabeledFamily<S, M, const N: usize = 1> = Family<S, M, [&'static str; N]>;
+
+impl<S, M, L> fmt::Debug for Family<S, M, L>
 where
     S: fmt::Debug + Clone + Eq + Hash,
-    M: ConstructMetric + fmt::Debug,
-    M::Constructor: fmt::Debug,
+    M: BuildMetric + fmt::Debug,
+    M::Builder: fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, formatter)
+        fmt::Debug::fmt(&self.inner, formatter)
     }
 }
 
-impl<S, M: ConstructMetric> Clone for Family<S, M> {
+impl<S, M: BuildMetric, L: Clone> Clone for Family<S, M, L> {
     fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
+        Self {
+            inner: Arc::clone(&self.inner),
+            labels: self.labels.clone(),
+        }
     }
 }
 
-impl<S: Clone + Eq + Hash, M: ConstructMetric> Family<S, M> {
-    pub(crate) fn new(constructor: M::Constructor) -> Self {
-        let inner = FamilyInner {
+impl<S, M, L> Family<S, M, L>
+where
+    S: Clone + Eq + Hash,
+    M: BuildMetric,
+{
+    pub(crate) fn new(builder: M::Builder, labels: L) -> Self {
+        let inner = Arc::new(FamilyInner {
             map: FrozenMap::new(),
-            constructor,
-        };
-        Self(Arc::new(inner))
+            builder,
+        });
+        Self { inner, labels }
     }
 
     /// Checks whether this family contains a metric with the specified labels. This is mostly useful
     /// for testing.
     pub fn contains(&self, labels: &S) -> bool {
-        self.0.map.get(labels).is_some()
+        self.inner.map.get(labels).is_some()
     }
 
     /// Gets a metric with the specified labels if it was reported previously. This is mostly useful
     /// for testing; use indexing for reporting.
     pub fn get(&self, labels: &S) -> Option<&M> {
-        self.0.map.get(labels)
+        self.inner.map.get(labels)
     }
 
     /// Returns all metrics currently present in this family together with the corresponding labels.
     /// This is inefficient and mostly useful for testing purposes.
     #[allow(clippy::missing_panics_doc)] // false positive
     pub fn to_entries(&self) -> HashMap<S, &M> {
-        let labels = self.0.map.keys_cloned();
+        let labels = self.inner.map.keys_cloned();
         labels
             .into_iter()
             .map(|key| {
-                let metric = self.0.map.get(&key).unwrap();
+                let metric = self.inner.map.get(&key).unwrap();
                 (key, metric)
             })
             .collect()
@@ -270,22 +356,29 @@ impl<S: Clone + Eq + Hash, M: ConstructMetric> Family<S, M> {
 }
 
 /// Will create a new metric with the specified labels if it's missing in the family.
-impl<S: Clone + Eq + Hash, M: ConstructMetric> ops::Index<&S> for Family<S, M> {
+impl<S, M, L> ops::Index<&S> for Family<S, M, L>
+where
+    S: Clone + Eq + Hash,
+    M: BuildMetric,
+{
     type Output = M;
 
     fn index(&self, labels: &S) -> &Self::Output {
-        self.0.get_or_create(labels)
+        self.inner.get_or_create(labels)
     }
 }
 
-impl<S, M: ConstructMetric> EncodeMetric for Family<S, M>
+impl<S, M, L> EncodeMetric for Family<S, M, L>
 where
-    S: Clone + Eq + Hash + EncodeLabelSet,
+    M: BuildMetric,
+    S: Clone + Eq + Hash,
+    L: MapLabels<S>,
 {
     fn encode(&self, mut encoder: MetricEncoder<'_, '_>) -> fmt::Result {
-        for labels in &self.0.map.keys_cloned() {
-            let metric = self.0.map.get(labels).unwrap();
-            let encoder = encoder.encode_family(labels)?;
+        for labels in &self.inner.map.keys_cloned() {
+            let metric = self.inner.map.get(labels).unwrap();
+            let mapped_labels = self.labels.map_labels(labels);
+            let encoder = encoder.encode_family(&mapped_labels)?;
             metric.encode(encoder)?;
         }
         Ok(())
@@ -296,7 +389,7 @@ where
     }
 }
 
-impl<S, M: ConstructMetric> TypedMetric for Family<S, M> {
+impl<S, M: BuildMetric, L> TypedMetric for Family<S, M, L> {
     const TYPE: MetricType = <M as TypedMetric>::TYPE;
 }
 
@@ -304,6 +397,7 @@ impl<S, M: ConstructMetric> TypedMetric for Family<S, M> {
 mod tests {
     use prometheus_client::metrics::family::Family as StandardFamily;
 
+    use crate::MetricBuilder;
     use std::{sync::mpsc, thread};
 
     use super::*;
@@ -314,17 +408,15 @@ mod tests {
     fn standard_family_is_easy_to_deadlock() {
         let (stop_sender, stop_receiver) = mpsc::channel();
         thread::spawn(move || {
-            let family = StandardFamily::<Label, Histogram<Duration>, _>::new_with_constructor(
-                Buckets::LATENCIES,
-            );
+            let family = StandardFamily::<Label, Gauge>::default();
             let first_metric = family.get_or_create(&("method", "test"));
             let second_metric = family.get_or_create(&("method", "other"));
             // ^ The second call will deadlock because of how `Family` is organized internally; its
             // `get_or_create()` provides a read guard for the internal map, and creating a new metric
             // requires a write lock on the same map.
 
-            first_metric.observe(Duration::from_millis(10));
-            second_metric.observe(Duration::from_millis(20));
+            first_metric.set(10);
+            second_metric.set(20);
             stop_sender.send(()).ok();
         });
 
@@ -336,11 +428,11 @@ mod tests {
 
     #[test]
     fn family_accesses_are_not_deadlocked() {
-        let family = Family::<Label, Histogram<Duration>>::new(Buckets::LATENCIES);
+        let family = Family::<Label, Gauge>::new(MetricBuilder::new(), ());
         let first_metric = &family[&("method", "test")];
         let second_metric = &family[&("method", "other")];
-        first_metric.observe(Duration::from_millis(10));
-        second_metric.observe(Duration::from_millis(20));
+        first_metric.set(10);
+        second_metric.set(20);
 
         // We circumvent deadlocking problems by using a *frozen map* (one that can be updated via a shared ref).
         // See its docs for more details. As an added bonus, we can use indexing notation instead of
