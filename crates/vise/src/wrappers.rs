@@ -256,7 +256,7 @@ pub struct Family<S, M: BuildMetric, L = ()> {
 /// # let mut registry = Registry::empty();
 /// # registry.register_metrics(&metrics);
 /// # let mut buffer = String::new();
-/// # registry.encode_to_text(&mut buffer).unwrap();
+/// # registry.encode(&mut buffer).unwrap();
 /// # for entry in entries {
 /// #     assert!(buffer.contains(&entry), "{buffer}");
 /// # }
@@ -288,7 +288,7 @@ pub struct Family<S, M: BuildMetric, L = ()> {
 /// # let mut registry = Registry::empty();
 /// # registry.register_metrics(&metrics);
 /// # let mut buffer = String::new();
-/// # registry.encode_to_text(&mut buffer).unwrap();
+/// # registry.encode(&mut buffer).unwrap();
 /// # for entry in entries {
 /// #     assert!(buffer.contains(&entry), "{buffer}");
 /// # }

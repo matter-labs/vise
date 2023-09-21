@@ -101,7 +101,7 @@ impl MetricsExporterInner {
 
         let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
         let mut new_buffer = String::with_capacity(1_024);
-        self.registry.encode_to_text(&mut new_buffer).unwrap();
+        self.registry.encode(&mut new_buffer).unwrap();
         let new_buffer = Self::transform_new_metrics(&new_buffer);
         // ^ `unwrap()` is safe; writing to a string never fails.
 

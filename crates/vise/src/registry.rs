@@ -6,7 +6,7 @@ use prometheus_client::{
     registry::{Descriptor, LocalMetric, Metric, Registry as RegistryInner, Unit},
 };
 
-use std::{collections::HashMap, fmt, io};
+use std::{collections::HashMap, fmt};
 
 use crate::{
     collector::Collector,
@@ -166,7 +166,7 @@ impl Registry {
     /// Registers a group of metrics.
     pub fn register_metrics<M: Metrics>(&mut self, metrics: &M) {
         self.descriptors.push(&M::DESCRIPTOR);
-        let visitor = MetricsVisitor(MetricsVistorInner::Registry(self));
+        let visitor = MetricsVisitor(MetricsVisitorInner::Registry(self));
         metrics.visit_metrics(visitor);
     }
 
@@ -176,65 +176,29 @@ impl Registry {
         self.inner.register_collector(Box::new(collector));
     }
 
-    /// Encodes all metrics in this registry using the Open Metrics text format.
-    ///
-    /// # Errors
-    ///
-    /// Proxies I/O errors of the provided `writer`.
-    #[allow(clippy::missing_panics_doc)] // false positive
-    pub fn encode<W: io::Write>(&self, writer: W) -> io::Result<()> {
-        let mut writer = WriterWrapper::new(writer);
-        text::encode(&mut writer, &self.inner).map_err(|_| writer.error.unwrap())
-    }
-
-    /// Encodes all metrics in this registry to the Open Metrics text format. Unlike [`Self::encode()`],
-    /// this method accepts a string writer, not a byte one.
+    /// Encodes all metrics in this registry to the Open Metrics text format.
     ///
     /// # Errors
     ///
     /// Proxies formatting errors of the provided `writer`.
-    pub fn encode_to_text<W: fmt::Write>(&self, writer: &mut W) -> fmt::Result {
+    pub fn encode<W: fmt::Write>(&self, writer: &mut W) -> fmt::Result {
         text::encode(writer, &self.inner)
     }
 }
 
 #[derive(Debug)]
-struct WriterWrapper<W> {
-    writer: W,
-    error: Option<io::Error>,
-}
-
-impl<W: io::Write> WriterWrapper<W> {
-    fn new(writer: W) -> Self {
-        Self {
-            writer,
-            error: None,
-        }
-    }
-}
-
-impl<W: io::Write> fmt::Write for WriterWrapper<W> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.writer.write_all(s.as_bytes()).map_err(|err| {
-            self.error = Some(err);
-            fmt::Error
-        })
-    }
-}
-
-#[derive(Debug)]
-enum MetricsVistorInner<'a> {
+enum MetricsVisitorInner<'a> {
     Registry(&'a mut Registry),
     Collector(&'a mut Vec<(Descriptor, Box<dyn LocalMetric>)>),
 }
 
-/// Registration for a group of metrics in a [`Registry`].
+/// Visitor for a group of metrics in a [`Registry`].
 #[derive(Debug)]
-pub struct MetricsVisitor<'a>(MetricsVistorInner<'a>);
+pub struct MetricsVisitor<'a>(MetricsVisitorInner<'a>);
 
 impl<'a> MetricsVisitor<'a> {
     pub(crate) fn for_collector(metrics: &'a mut Vec<(Descriptor, Box<dyn LocalMetric>)>) -> Self {
-        Self(MetricsVistorInner::Collector(metrics))
+        Self(MetricsVisitorInner::Collector(metrics))
     }
 
     /// Registers a metric of family of metrics.
@@ -246,14 +210,14 @@ impl<'a> MetricsVisitor<'a> {
         metric: impl Metric,
     ) {
         match &mut self.0 {
-            MetricsVistorInner::Registry(registry) => {
+            MetricsVisitorInner::Registry(registry) => {
                 if let Some(unit) = unit {
                     registry.inner.register_with_unit(name, help, unit, metric);
                 } else {
                     registry.inner.register(name, help, metric);
                 }
             }
-            MetricsVistorInner::Collector(collector) => {
+            MetricsVisitorInner::Collector(collector) => {
                 let descriptor = Descriptor::new(name, help, unit, None, vec![]);
                 collector.push((descriptor, Box::new(metric)));
             }

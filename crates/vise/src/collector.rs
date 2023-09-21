@@ -146,7 +146,7 @@ mod tests {
 
         drop(state);
         let mut buffer = String::new();
-        registry.encode_to_text(&mut buffer).unwrap();
+        registry.encode(&mut buffer).unwrap();
 
         assert_eq!(buffer, "# EOF\n");
     }
@@ -154,7 +154,7 @@ mod tests {
     fn assert_collector_works(registry: &Registry, state: &Arc<AtomicI64>) {
         state.store(123, Ordering::Release);
         let mut buffer = String::new();
-        registry.encode_to_text(&mut buffer).unwrap();
+        registry.encode(&mut buffer).unwrap();
         let lines: Vec<_> = buffer.lines().collect();
 
         let expected_lines = [
@@ -198,7 +198,7 @@ mod tests {
         drop(state);
 
         let mut buffer = String::new();
-        registry.encode_to_text(&mut buffer).unwrap();
+        registry.encode(&mut buffer).unwrap();
         let lines: Vec<_> = buffer.lines().collect();
         assert!(lines.contains(&"dynamic_gauge_bytes 42"), "{lines:#?}");
     }
