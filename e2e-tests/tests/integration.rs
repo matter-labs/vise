@@ -3,16 +3,18 @@
 use anyhow::Context as _;
 use assert_matches::assert_matches;
 use prometheus_http_query::{response::MetricType, Client, TargetState};
-use testcontainers::{clients::Cli, core::WaitFor, images::generic::GenericImage, RunnableImage};
+use tokio::{
+    fs,
+    io::{AsyncBufReadExt, BufReader},
+    process::{Child, Command},
+};
 use tracing::metadata::LevelFilter;
 
 use std::{
     collections::HashSet,
-    fs,
-    io::{BufRead, BufReader},
     net::SocketAddr,
     path::Path,
-    process::{Child, Command, Stdio},
+    process::{Command as StdCommand, Stdio},
     time::{Duration, Instant},
 };
 
@@ -35,45 +37,124 @@ const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const MAX_WAIT: Duration = Duration::from_secs(20);
 
 #[derive(Debug)]
-struct ChildGuard(Child);
+struct PrometheusContainer {
+    id: String,
+}
 
-impl ChildGuard {
-    fn new(child: Child) -> Self {
-        Self(child)
+impl PrometheusContainer {
+    const PROM_IMAGE_TAG: &'static str = "v2.47.0";
+
+    fn run_command(prom_config_path: &str) -> Command {
+        let mut command = Command::new("docker");
+        command
+            .arg("run")
+            // Resolve `host.docker.internal` to host IP (necessary for Linux)
+            .args(["--add-host", "host.docker.internal:host-gateway"])
+            // Volume for Prometheus config we've generated.
+            .args([
+                "-v",
+                &format!("{prom_config_path}:/etc/prometheus/prometheus.yml"),
+            ])
+            .args(["-p", "0:9090"])
+            .args(["--rm", "-d"])
+            .arg(format!("prom/prometheus:{}", Self::PROM_IMAGE_TAG));
+
+        let prom_args = [
+            "--config.file=/etc/prometheus/prometheus.yml",
+            "--web.console.libraries=/etc/prometheus/console_libraries",
+            "--web.console.templates=/etc/prometheus/consoles",
+            "--web.enable-lifecycle",
+        ];
+        command.args(prom_args);
+        command
+    }
+
+    async fn new(temp_dir: &Path, app_port: u16) -> anyhow::Result<Self> {
+        let prom_config = PROMETHEUS_CONFIG.replace("$port", &app_port.to_string());
+        let prom_config_path = temp_dir.join("prometheus.yml");
+        fs::write(&prom_config_path, prom_config)
+            .await
+            .context("Cannot write Prometheus config")?;
+        let prom_config_path = prom_config_path
+            .to_str()
+            .context("Cannot convert path to Prometheus config")?;
+        tracing::info!("Written Prometheus config to {prom_config_path}");
+
+        let mut run_command = Self::run_command(prom_config_path);
+        tracing::info!(?run_command, "Prepared run command for Docker");
+
+        let output = run_command.kill_on_drop(true).output().await?;
+        assert!(output.status.success(), "`docker run` failed");
+        let id = String::from_utf8(output.stdout)
+            .context("Failed converting docker run stdout")?
+            .trim()
+            .to_owned();
+        tracing::info!(id, "Started container");
+
+        let this = Self { id };
+        // Give a container some time to initialize.
+        tokio::time::sleep(POLL_INTERVAL).await;
+        this.wait_until_ready().await?;
+        Ok(this)
+    }
+
+    async fn wait_until_ready(&self) -> anyhow::Result<()> {
+        const READY_MESSAGE: &str = "Server is ready to receive web requests";
+
+        let mut logs_process = Command::new("docker")
+            .args(["logs", "-f", &self.id])
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .context("Failed running `docker logs`")?;
+
+        let stderr = logs_process.stderr.take().unwrap();
+        let reader = BufReader::new(stderr);
+        let mut lines = reader.lines();
+        while let Some(line) = lines.next_line().await? {
+            tracing::debug!(line, "Received log");
+            if line.contains(READY_MESSAGE) {
+                return Ok(());
+            }
+        }
+        anyhow::bail!("Prometheus terminated without getting ready");
+    }
+
+    async fn port(&self) -> anyhow::Result<u16> {
+        // Taken from https://docs.docker.com/engine/reference/commandline/inspect/
+        const FORMAT: &str = "{{(index (index .NetworkSettings.Ports \"9090/tcp\") 0).HostPort}}";
+
+        let output = Command::new("docker")
+            .args(["inspect", "--type=container", "--format", FORMAT, &self.id])
+            .arg(&self.id)
+            .kill_on_drop(true)
+            .output()
+            .await?;
+        let output = String::from_utf8(output.stdout)?;
+        tracing::info!(output, "Received port");
+
+        let ports: Result<HashSet<_>, _> = output
+            .lines()
+            .map(|line| line.trim().parse::<u16>())
+            .collect();
+        let ports = ports.context("Failed parsing Prometheus port")?;
+        anyhow::ensure!(ports.len() == 1, "Ambiguous Prometheus port: {ports:?}");
+        Ok(*ports.iter().next().unwrap())
     }
 }
 
-impl Drop for ChildGuard {
+impl Drop for PrometheusContainer {
     fn drop(&mut self) {
-        self.0.kill().ok();
+        let output = StdCommand::new("docker")
+            .args(["rm", "-f", "-v"])
+            .arg(&self.id)
+            .output()
+            .expect("Failed running `docker rm`");
+        assert!(output.status.success(), "`docker rm` failed");
+        let output = String::from_utf8(output.stdout).expect("Failed decoding `docker rm` output");
+        assert!(output.contains(&self.id), "Failed stopping container");
     }
-}
-
-fn prometheus_image(temp_dir: &Path, app_port: u16) -> anyhow::Result<RunnableImage<GenericImage>> {
-    const PROM_IMAGE_TAG: &str = "v2.47.0";
-    const READY_MESSAGE: &str = "Server is ready to receive web requests";
-
-    let prom_config = PROMETHEUS_CONFIG.replace("$port", &app_port.to_string());
-    let prom_config_path = temp_dir.join("prometheus.yml");
-    fs::write(&prom_config_path, prom_config).context("Cannot write Prometheus config")?;
-    let prom_config_path = prom_config_path
-        .to_str()
-        .context("Cannot convert path to Prometheus config")?;
-    tracing::info!("Written Prometheus config to {prom_config_path}");
-
-    let image = GenericImage::new("prom/prometheus", PROM_IMAGE_TAG)
-        .with_exposed_port(9090)
-        .with_wait_for(WaitFor::message_on_stderr(READY_MESSAGE));
-    let args = [
-        "--config.file=/etc/prometheus/prometheus.yml",
-        "--web.console.libraries=/etc/prometheus/console_libraries",
-        "--web.console.templates=/etc/prometheus/consoles",
-        "--web.enable-lifecycle",
-    ];
-    let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
-    Ok(RunnableImage::from((image, args))
-        .with_volume((prom_config_path, "/etc/prometheus/prometheus.yml"))
-        .with_mapped_port((0, 9090)))
 }
 
 fn init_logging() {
@@ -84,21 +165,24 @@ fn init_logging() {
         .init();
 }
 
-fn start_app() -> anyhow::Result<(ChildGuard, u16)> {
+async fn start_app() -> anyhow::Result<(Child, u16)> {
     let binary = env!(concat!("CARGO_BIN_EXE_", env!("CARGO_PKG_NAME")));
     tracing::info!("Running binary `{binary}`");
-    let app_process = Command::new(binary)
-        .arg("127.0.0.1:0")
+    let mut app_process = Command::new(binary)
+        .arg("0.0.0.0:0")
         .stdout(Stdio::piped())
+        .kill_on_drop(true)
         .spawn()
         .context("Failed spawning child")?;
-    let mut app_process = ChildGuard::new(app_process);
 
     // The child should print its port to stdout.
-    let app_stdout = app_process.0.stdout.take().context("no app stdout")?;
-    let mut app_stdout = BufReader::new(app_stdout);
-    let mut line = String::new();
-    app_stdout.read_line(&mut line)?;
+    let app_stdout = app_process.stdout.take().unwrap();
+    let app_stdout = BufReader::new(app_stdout);
+    let line = app_stdout
+        .lines()
+        .next_line()
+        .await?
+        .context("app terminated prematurely")?;
 
     let app_addr = line
         .strip_prefix("local_addr=")
@@ -115,18 +199,12 @@ fn start_app() -> anyhow::Result<(ChildGuard, u16)> {
 async fn starting_and_scraping_app() -> anyhow::Result<()> {
     init_logging();
 
-    let (_app_process, app_port) = tokio::task::spawn_blocking(start_app).await??;
+    let (_app_process, app_port) = start_app().await?;
 
-    let cli = Cli::docker();
     let temp_dir = tempfile::tempdir().context("Failed creating temp dir")?;
-    let container = cli.run(prometheus_image(temp_dir.path(), app_port)?);
-
-    let prom_port = container
-        .ports()
-        .map_to_host_port_ipv4(9090)
-        .context("Prometheus container doesn't map port 9090")?;
-    tracing::info!("Prometheus started on port {prom_port}");
-
+    let container = PrometheusContainer::new(temp_dir.path(), app_port).await?;
+    let prom_port = container.port().await?;
+    tracing::info!("Prometheus started on {prom_port}");
     assert_metrics(prom_port).await
 }
 
