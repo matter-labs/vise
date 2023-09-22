@@ -11,6 +11,7 @@ use std::{collections::HashMap, fmt};
 use crate::{
     collector::Collector,
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
+    format::{Format, PrometheusWrapper},
     Metrics,
 };
 
@@ -176,13 +177,21 @@ impl Registry {
         self.inner.register_collector(Box::new(collector));
     }
 
-    /// Encodes all metrics in this registry to the Open Metrics text format.
+    /// Encodes all metrics in this registry to the specified text format.
     ///
     /// # Errors
     ///
     /// Proxies formatting errors of the provided `writer`.
-    pub fn encode<W: fmt::Write>(&self, writer: &mut W) -> fmt::Result {
-        text::encode(writer, &self.inner)
+    pub fn encode<W: fmt::Write>(&self, writer: &mut W, format: Format) -> fmt::Result {
+        match format {
+            Format::Prometheus | Format::OpenMetricsForPrometheus => {
+                let remove_eof_terminator = matches!(format, Format::Prometheus);
+                let mut wrapper = PrometheusWrapper::new(writer, remove_eof_terminator);
+                text::encode(&mut wrapper, &self.inner)?;
+                wrapper.flush()
+            }
+            Format::OpenMetrics => text::encode(writer, &self.inner),
+        }
     }
 }
 

@@ -72,7 +72,6 @@ use hyper::{
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 
 use std::{
-    borrow::Cow,
     collections::HashSet,
     fmt::{self, Write as _},
     future::{self, Future},
@@ -86,7 +85,9 @@ use std::{
 mod metrics;
 
 use crate::metrics::{Facade, EXPORTER_METRICS};
-use vise::Registry;
+use vise::{Format, Registry};
+
+// FIXME: allow customizing format; test on real app
 
 #[derive(Clone)]
 struct MetricsExporterInner {
@@ -101,8 +102,9 @@ impl MetricsExporterInner {
 
         let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
         let mut new_buffer = String::with_capacity(1_024);
-        self.registry.encode(&mut new_buffer).unwrap();
-        let new_buffer = Self::transform_new_metrics(&new_buffer);
+        self.registry
+            .encode(&mut new_buffer, Format::OpenMetricsForPrometheus)
+            .unwrap();
         // ^ `unwrap()` is safe; writing to a string never fails.
 
         let latency = latency.observe();
@@ -146,65 +148,18 @@ impl MetricsExporterInner {
         String::new()
     }
 
-    /// Transforms legacy metrics from the Prometheus text format to the Open Metrics one.
+    /// Transforms legacy metrics from the Prometheus text format to the OpenMetrics one.
     ///
     /// This transform:
     ///
     /// - Removes empty lines from `buffer`; they are fine for Prometheus, but run contrary
-    ///   to the Open Metrics text format spec.
+    ///   to the OpenMetrics text format spec.
     #[cfg(feature = "legacy")]
     fn transform_legacy_metrics(buffer: &str) -> String {
         buffer
             .lines()
             .filter(|line| !line.is_empty())
             .flat_map(|line| [line, "\n"])
-            .collect()
-    }
-
-    /// Transforms the Open Metrics text format so that it can be properly ingested by Prometheus.
-    ///
-    /// Prometheus *mostly* understands the Open Metrics format (e.g., enforcing no empty lines for it;
-    /// see the transform above). The notable exception is counter definitions; Open Metrics requires
-    /// to append `_total` to the counter name (like `_sum` / `_count` / `_bucket` are appended
-    /// to histogram names), but Prometheus doesn't understand this (yet?).
-    ///
-    /// See also: [issue in `prometheus-client`](https://github.com/prometheus/client_rust/issues/111)
-    ///
-    /// This transform:
-    ///
-    /// - Strips `_total` suffix from counter definitions.
-    fn transform_new_metrics(buffer: &str) -> String {
-        let mut last_metric_type = None;
-
-        buffer
-            .lines()
-            .flat_map(|line| {
-                let mut transformed_line = None;
-                if let Some(type_def) = line.strip_prefix("# TYPE ") {
-                    last_metric_type = Some(MetricTypeDef::parse(type_def));
-                } else if !line.starts_with('#') {
-                    // `line` reports metric value
-                    let name_end_pos = line
-                        .find(|ch: char| ch == '{' || ch.is_ascii_whitespace())
-                        .unwrap_or_else(|| {
-                            panic!("Invalid metric definition: {line}");
-                        });
-                    let (name, rest) = line.split_at(name_end_pos);
-
-                    if let Some(metric_type) = last_metric_type {
-                        let truncated_name = name.strip_suffix("_total");
-
-                        if truncated_name == Some(metric_type.name) && metric_type.is_counter() {
-                            // Remove `_total` suffix to the metric name, which is not present
-                            // in the Prometheus text format, but is mandatory for the Open Metrics format.
-                            transformed_line = Some(format!("{}{rest}", metric_type.name));
-                        }
-                    }
-                }
-
-                let transformed_line = transformed_line.map_or(Cow::Borrowed(line), Cow::Owned);
-                [transformed_line, Cow::Borrowed("\n")]
-            }) // restore newlines
             .collect()
     }
 
@@ -215,28 +170,6 @@ impl MetricsExporterInner {
             .header(header::CONTENT_TYPE, TEXT_CONTENT_TYPE)
             .body(self.render_body())
             .unwrap()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct MetricTypeDef<'a> {
-    name: &'a str,
-    ty: &'a str,
-}
-
-impl<'a> MetricTypeDef<'a> {
-    fn parse(raw: &'a str) -> Self {
-        let (name, ty) = raw
-            .trim()
-            .split_once(|ch: char| ch.is_ascii_whitespace())
-            .unwrap_or_else(|| {
-                panic!("Invalid metric type definition: {raw}");
-            });
-        Self { name, ty }
-    }
-
-    fn is_counter(self) -> bool {
-        self.ty == "counter"
     }
 }
 
@@ -358,7 +291,7 @@ impl MetricsExporter {
     ///
     /// The server will expose the following endpoints:
     ///
-    /// - `GET` on any path: serves the metrics in the Open Metrics text format
+    /// - `GET` on any path: serves the metrics in the OpenMetrics text format
     ///
     /// # Panics
     ///
@@ -499,29 +432,6 @@ mod tests {
 
     #[vise::register]
     static TEST_METRICS: Global<TestMetrics> = Global::new();
-
-    #[test]
-    fn transforming_open_metrics_text_format() {
-        let input = "\
-            # TYPE modern_counter counter\n\
-            modern_counter_total 1\n\
-            # TYPE modern_gauge gauge\n\
-            modern_gauge{label=\"value\"} 23\n\
-            # TYPE modern_counter_with_labels counter\n\
-            modern_counter_with_labels_total{label=\"value\"} 3\n\
-            modern_counter_with_labels_total{label=\"other\"} 5";
-        let expected = "\
-            # TYPE modern_counter counter\n\
-            modern_counter 1\n\
-            # TYPE modern_gauge gauge\n\
-            modern_gauge{label=\"value\"} 23\n\
-            # TYPE modern_counter_with_labels counter\n\
-            modern_counter_with_labels{label=\"value\"} 3\n\
-            modern_counter_with_labels{label=\"other\"} 5\n";
-
-        let transformed = MetricsExporterInner::transform_new_metrics(input);
-        assert_eq!(transformed, expected);
-    }
 
     #[cfg(feature = "legacy")]
     fn init_legacy_exporter(builder: PrometheusBuilder) -> PrometheusBuilder {
