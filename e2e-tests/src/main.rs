@@ -1,3 +1,5 @@
+//! Mock app that defines `vise` metrics and uses the corresponding exporter.
+
 use rand::{thread_rng, Rng};
 use tokio::sync::watch;
 

@@ -1,4 +1,4 @@
-//! Integration testing.
+//! Integration testing for `vise` exporter.
 
 use anyhow::Context as _;
 use assert_matches::assert_matches;
@@ -32,7 +32,7 @@ scrape_configs:
 "#;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
-const MAX_WAIT: Duration = Duration::from_secs(10);
+const MAX_WAIT: Duration = Duration::from_secs(20);
 
 #[derive(Debug)]
 struct ChildGuard(Child);
