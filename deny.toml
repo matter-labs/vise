@@ -35,6 +35,7 @@ allow = [
   # Permissive licenses
   "Apache-2.0",
   "BSD-2-Clause",
+  "BSD-3-Clause",
   "MIT",
   "Unicode-DFS-2016",
 ]
@@ -51,6 +52,9 @@ skip = [
   { name = "syn", version = "^1" },
   # Old version required by `hyper`. No fix available ATM.
   { name = "socket2", version = "^0.4" },
+  # Old version used by several crates. Largely a codegen dep, so using multiple versions shouldn't
+  # be very problematic.
+  { name = "bitflags", version = "^1" },
 ]
 skip-tree = [
   # Old version used by `metrics`
