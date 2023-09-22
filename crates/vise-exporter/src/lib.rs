@@ -293,30 +293,39 @@ impl MetricsExporter {
     ///
     /// - `GET` on any path: serves the metrics in the OpenMetrics text format
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if binding to the specified address fails.
-    pub async fn start(self, bind_address: SocketAddr) {
+    /// Returns an error if binding to the specified address fails.
+    pub async fn start(self, bind_address: SocketAddr) -> hyper::Result<()> {
         tracing::info!("Starting Prometheus exporter web server on {bind_address}");
-
-        Server::bind(&bind_address)
-            .serve(make_service_fn(move |_| {
-                let inner = self.inner.clone();
-                future::ready(Ok::<_, hyper::Error>(service_fn(move |_| {
-                    let inner = inner.clone();
-                    async move { Ok::<_, hyper::Error>(inner.render()) }
-                })))
-            }))
-            .with_graceful_shutdown(async move {
-                self.shutdown_future.await;
-                tracing::info!(
-                    "Stop signal received, Prometheus metrics exporter is shutting down"
-                );
-            })
-            .await
-            .expect("Metrics server failed to start");
-
+        self.bind(bind_address)?.start().await?;
         tracing::info!("Prometheus metrics exporter server shut down");
+        Ok(())
+    }
+
+    /// Creates an HTTP exporter server and binds it to the specified address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if binding to the specified address fails.
+    pub fn bind(self, bind_address: SocketAddr) -> hyper::Result<MetricsServer> {
+        let server = Server::try_bind(&bind_address)?.serve(make_service_fn(move |_| {
+            let inner = self.inner.clone();
+            future::ready(Ok::<_, hyper::Error>(service_fn(move |_| {
+                let inner = inner.clone();
+                async move { Ok::<_, hyper::Error>(inner.render()) }
+            })))
+        }));
+        let local_addr = server.local_addr();
+
+        let server = server.with_graceful_shutdown(async move {
+            self.shutdown_future.await;
+            tracing::info!("Stop signal received, Prometheus metrics exporter is shutting down");
+        });
+        Ok(MetricsServer {
+            server: Box::pin(server),
+            local_addr,
+        })
     }
 
     /// Starts pushing metrics to the `endpoint` with the specified `interval` between pushes.
@@ -385,6 +394,40 @@ impl MetricsExporter {
             %body,
             "Error pushing metrics to Prometheus push gateway"
         );
+    }
+}
+
+/// Metrics server bound to a certain local address returned by [`MetricsExporter::bind()`].
+///
+/// Useful e.g. if you need to find out which port the server was bound to if the 0th port was specified.
+#[must_use = "Server should be `start()`ed"]
+pub struct MetricsServer {
+    server: Pin<Box<dyn Future<Output = hyper::Result<()>> + Send>>,
+    local_addr: SocketAddr,
+}
+
+impl fmt::Debug for MetricsServer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MetricsServer")
+            .field("local_addr", &self.local_addr)
+            .finish_non_exhaustive()
+    }
+}
+
+impl MetricsServer {
+    /// Returns the local address this server is bound to.
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    /// Starts this server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if starting the server operation fails.
+    pub async fn start(self) -> hyper::Result<()> {
+        self.server.await
     }
 }
 
