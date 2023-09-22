@@ -167,7 +167,7 @@ impl MetricsExporterInner {
     fn render(&self) -> Response<Body> {
         Response::builder()
             .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, TEXT_CONTENT_TYPE)
+            .header(header::CONTENT_TYPE, Format::OPEN_METRICS_CONTENT_TYPE)
             .body(self.render_body())
             .unwrap()
     }
@@ -339,7 +339,7 @@ impl MetricsExporter {
             let request = Request::builder()
                 .method(Method::PUT)
                 .uri(endpoint.clone())
-                .header(header::CONTENT_TYPE, TEXT_CONTENT_TYPE)
+                .header(header::CONTENT_TYPE, Format::OPEN_METRICS_CONTENT_TYPE)
                 .body(self.inner.render_body())
                 .expect("Failed creating Prometheus push gateway request");
 
@@ -387,8 +387,6 @@ impl MetricsExporter {
         );
     }
 }
-
-const TEXT_CONTENT_TYPE: &str = "application/openmetrics-text; version=1.0.0; charset=utf-8";
 
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");
@@ -585,7 +583,10 @@ mod tests {
                     .await
                     .expect("timed out waiting for metrics push")
                     .unwrap();
-            assert_eq!(request_headers[&header::CONTENT_TYPE], TEXT_CONTENT_TYPE);
+            assert_eq!(
+                request_headers[&header::CONTENT_TYPE],
+                Format::OPEN_METRICS_CONTENT_TYPE
+            );
             assert_scraped_payload_is_valid(&request_body);
         }
     }

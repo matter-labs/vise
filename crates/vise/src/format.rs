@@ -3,6 +3,15 @@
 use std::{fmt, mem};
 
 /// Metrics export format.
+///
+/// Supported formats are quite similar, but differ how they encode counter values and whether
+/// they specify the `# EOF` terminator:
+///
+/// | Format | `_total` suffix for counters | `# EOF` |
+/// |:-------|:-----------------------------|:--------|
+/// | [`Self::OpenMetrics`] | yes | yes |
+/// | [`Self::OpenMetricsForPrometheus`] | no | yes |
+/// | [`Self::Prometheus`] | no | no |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Format {
@@ -27,6 +36,15 @@ pub enum Format {
     ///
     /// See also: [issue in `prometheus-client`](https://github.com/prometheus/client_rust/issues/111)
     OpenMetricsForPrometheus,
+}
+
+impl Format {
+    /// Content type for OpenMetrics text format.
+    pub const OPEN_METRICS_CONTENT_TYPE: &'static str =
+        "application/openmetrics-text; version=1.0.0; charset=utf-8";
+
+    /// Content type for Prometheus test format.
+    pub const PROMETHEUS_CONTENT_TYPE: &'static str = "text/plain; version=0.0.4; charset=utf-8";
 }
 
 #[derive(Debug)]
