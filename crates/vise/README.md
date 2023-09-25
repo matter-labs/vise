@@ -7,7 +7,8 @@
 **Documentation:**
 [![crate docs (main)](https://img.shields.io/badge/main-yellow.svg?label=docs)](https://matter-labs.github.io/vise/vise/)
 
-This library provides a high-level wrapper for defining and reporting metrics in Rust libraries and applications.
+This library provides a wrapper for defining and reporting metrics in Rust libraries and applications.
+It is based on the [`prometheus-client`] library, augmenting it with higher-level / more eloquent functionality.
 
 ## Features
 
@@ -139,6 +140,7 @@ Distributed under the terms of either
 
 at your option.
 
+[`prometheus-client`]: https://crates.io/crates/prometheus-client
 [prometheus]: https://prometheus.io/docs/introduction/overview/
 [grafana]: https://grafana.com/docs/grafana/latest/
 [rocksdb]: https://rocksdb.org/

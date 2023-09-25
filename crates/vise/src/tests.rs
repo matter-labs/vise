@@ -99,7 +99,7 @@ fn testing_metrics() {
     test_metrics.histograms_with_buckets[&"send_transaction"].observe(Duration::from_millis(620));
 
     let mut buffer = String::new();
-    registry.encode_to_text(&mut buffer).unwrap();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
     let lines: Vec<_> = buffer.lines().collect();
 
     // `_bytes` suffix is added automatically per Prometheus naming suggestions:
@@ -187,7 +187,7 @@ fn using_label_set() {
     let mut registry = Registry::empty();
     registry.register_metrics(&test_metrics);
     let mut buffer = String::new();
-    registry.encode_to_text(&mut buffer).unwrap();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
     let lines: Vec<_> = buffer.lines().collect();
 
     assert!(lines.contains(&r#"test_gauges{num="3"} 2.0"#));
@@ -221,7 +221,7 @@ fn label_with_raw_ident() {
     let mut registry = Registry::empty();
     registry.register_metrics(&test_metrics);
     let mut buffer = String::new();
-    registry.encode_to_text(&mut buffer).unwrap();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
     let lines: Vec<_> = buffer.lines().collect();
 
     assert!(
@@ -265,7 +265,7 @@ fn renamed_labels() {
     let mut registry = Registry::empty();
     registry.register_metrics(&test_metrics);
     let mut buffer = String::new();
-    registry.encode_to_text(&mut buffer).unwrap();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
     let lines: Vec<_> = buffer.lines().collect();
 
     let expected_lines = [
@@ -307,7 +307,7 @@ fn labeled_family_with_multiple_labels() {
     let mut registry = Registry::empty();
     registry.register_metrics(&test_metrics);
     let mut buffer = String::new();
-    registry.encode_to_text(&mut buffer).unwrap();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
     let lines: Vec<_> = buffer.lines().collect();
 
     let expected_lines = [

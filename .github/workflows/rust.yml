@@ -29,12 +29,10 @@ jobs:
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.3
 
-      - name: Run tests
-        run: cargo test --workspace --all-features --all-targets
-      - name: Run tests (exporter, no features)
-        run: cargo test -p vise-exporter --no-default-features --all-targets
-      - name: Run doc tests
-        run: cargo test --workspace --all-features --doc
+      - name: Build libraries
+        run: cargo build --workspace --exclude vise-e2e-tests --lib --all-features
+      - name: Build exporter (no features)
+        run: cargo build -p vise-exporter --no-default-features --lib
 
   build:
     runs-on: ubuntu-latest

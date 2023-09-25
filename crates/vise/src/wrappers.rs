@@ -236,7 +236,7 @@ pub struct Family<S, M: BuildMetric, L = ()> {
 ///
 /// ```
 /// use vise::{Counter, LabeledFamily, Metrics};
-/// # use vise::Registry;
+/// # use vise::{Format, Registry};
 ///
 /// #[derive(Debug, Metrics)]
 /// struct TestMetrics {
@@ -256,7 +256,7 @@ pub struct Family<S, M: BuildMetric, L = ()> {
 /// # let mut registry = Registry::empty();
 /// # registry.register_metrics(&metrics);
 /// # let mut buffer = String::new();
-/// # registry.encode_to_text(&mut buffer).unwrap();
+/// # registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
 /// # for entry in entries {
 /// #     assert!(buffer.contains(&entry), "{buffer}");
 /// # }
@@ -265,7 +265,7 @@ pub struct Family<S, M: BuildMetric, L = ()> {
 /// ## Family with multiple labels
 ///
 /// ```
-/// # use vise::{Buckets, Histogram, LabeledFamily, Metrics, Registry};
+/// # use vise::{Buckets, Format, Histogram, LabeledFamily, Metrics, Registry};
 /// # use std::time::Duration;
 /// const LABELS: [&str; 2] = ["method", "code"];
 /// type Labels = (&'static str, u16);
@@ -288,7 +288,7 @@ pub struct Family<S, M: BuildMetric, L = ()> {
 /// # let mut registry = Registry::empty();
 /// # registry.register_metrics(&metrics);
 /// # let mut buffer = String::new();
-/// # registry.encode_to_text(&mut buffer).unwrap();
+/// # registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
 /// # for entry in entries {
 /// #     assert!(buffer.contains(&entry), "{buffer}");
 /// # }

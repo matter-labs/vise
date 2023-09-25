@@ -72,7 +72,6 @@ use hyper::{
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 
 use std::{
-    borrow::Cow,
     collections::HashSet,
     fmt::{self, Write as _},
     future::{self, Future},
@@ -86,11 +85,12 @@ use std::{
 mod metrics;
 
 use crate::metrics::{Facade, EXPORTER_METRICS};
-use vise::Registry;
+use vise::{Format, Registry};
 
 #[derive(Clone)]
 struct MetricsExporterInner {
     registry: Arc<Registry>,
+    format: Format,
     #[cfg(feature = "legacy")]
     legacy_exporter: Option<&'static PrometheusHandle>,
 }
@@ -101,8 +101,7 @@ impl MetricsExporterInner {
 
         let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
         let mut new_buffer = String::with_capacity(1_024);
-        self.registry.encode_to_text(&mut new_buffer).unwrap();
-        let new_buffer = Self::transform_new_metrics(&new_buffer);
+        self.registry.encode(&mut new_buffer, self.format).unwrap();
         // ^ `unwrap()` is safe; writing to a string never fails.
 
         let latency = latency.observe();
@@ -146,12 +145,13 @@ impl MetricsExporterInner {
         String::new()
     }
 
-    /// Transforms legacy metrics from the Prometheus text format to the Open Metrics one.
+    /// Transforms legacy metrics from the Prometheus text format to the OpenMetrics one.
+    /// The output format is still accepted by Prometheus.
     ///
     /// This transform:
     ///
     /// - Removes empty lines from `buffer`; they are fine for Prometheus, but run contrary
-    ///   to the Open Metrics text format spec.
+    ///   to the OpenMetrics text format spec.
     #[cfg(feature = "legacy")]
     fn transform_legacy_metrics(buffer: &str) -> String {
         buffer
@@ -161,82 +161,18 @@ impl MetricsExporterInner {
             .collect()
     }
 
-    /// Transforms the Open Metrics text format so that it can be properly ingested by Prometheus.
-    ///
-    /// Prometheus *mostly* understands the Open Metrics format (e.g., enforcing no empty lines for it;
-    /// see the transform above). The notable exception is counter definitions; Open Metrics requires
-    /// to append `_total` to the counter name (like `_sum` / `_count` / `_bucket` are appended
-    /// to histogram names), but Prometheus doesn't understand this (yet?).
-    ///
-    /// See also: [issue in `prometheus-client`](https://github.com/prometheus/client_rust/issues/111)
-    ///
-    /// This transform:
-    ///
-    /// - Strips `_total` suffix from counter definitions.
-    fn transform_new_metrics(buffer: &str) -> String {
-        let mut last_metric_type = None;
-
-        buffer
-            .lines()
-            .flat_map(|line| {
-                let mut transformed_line = None;
-                if let Some(type_def) = line.strip_prefix("# TYPE ") {
-                    last_metric_type = Some(MetricTypeDef::parse(type_def));
-                } else if !line.starts_with('#') {
-                    // `line` reports metric value
-                    let name_end_pos = line
-                        .find(|ch: char| ch == '{' || ch.is_ascii_whitespace())
-                        .unwrap_or_else(|| {
-                            panic!("Invalid metric definition: {line}");
-                        });
-                    let (name, rest) = line.split_at(name_end_pos);
-
-                    if let Some(metric_type) = last_metric_type {
-                        let truncated_name = name.strip_suffix("_total");
-
-                        if truncated_name == Some(metric_type.name) && metric_type.is_counter() {
-                            // Remove `_total` suffix to the metric name, which is not present
-                            // in the Prometheus text format, but is mandatory for the Open Metrics format.
-                            transformed_line = Some(format!("{}{rest}", metric_type.name));
-                        }
-                    }
-                }
-
-                let transformed_line = transformed_line.map_or(Cow::Borrowed(line), Cow::Owned);
-                [transformed_line, Cow::Borrowed("\n")]
-            }) // restore newlines
-            .collect()
-    }
-
     // TODO: consider using a streaming response?
     fn render(&self) -> Response<Body> {
+        let content_type = if matches!(self.format, Format::Prometheus) {
+            Format::PROMETHEUS_CONTENT_TYPE
+        } else {
+            Format::OPEN_METRICS_CONTENT_TYPE
+        };
         Response::builder()
             .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, TEXT_CONTENT_TYPE)
+            .header(header::CONTENT_TYPE, content_type)
             .body(self.render_body())
             .unwrap()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct MetricTypeDef<'a> {
-    name: &'a str,
-    ty: &'a str,
-}
-
-impl<'a> MetricTypeDef<'a> {
-    fn parse(raw: &'a str) -> Self {
-        let (name, ty) = raw
-            .trim()
-            .split_once(|ch: char| ch.is_ascii_whitespace())
-            .unwrap_or_else(|| {
-                panic!("Invalid metric type definition: {raw}");
-            });
-        Self { name, ty }
-    }
-
-    fn is_counter(self) -> bool {
-        self.ty == "counter"
     }
 }
 
@@ -280,6 +216,7 @@ impl MetricsExporter {
         Self {
             inner: MetricsExporterInner {
                 registry,
+                format: Format::OpenMetricsForPrometheus,
                 #[cfg(feature = "legacy")]
                 legacy_exporter: None,
             },
@@ -311,6 +248,17 @@ impl MetricsExporter {
         tracing::info!(
             "Created metrics exporter with {metric_count} metrics in {group_count} groups from crates {crates}"
         );
+    }
+
+    /// Sets the export [`Format`]. By default, [`Format::OpenMetricsForPrometheus`] is used
+    /// (i.e., OpenMetrics text format with minor changes so that it is fully parsed by Prometheus).
+    ///
+    /// See `Format` docs for more details on differences between export formats. Note that using
+    /// [`Format::OpenMetrics`] is not fully supported by Prometheus at the time of writing.
+    #[must_use]
+    pub fn with_format(mut self, format: Format) -> Self {
+        self.inner.format = format;
+        self
     }
 
     /// Installs a legacy exporter for the metrics defined using the `metrics` façade. The specified
@@ -358,32 +306,41 @@ impl MetricsExporter {
     ///
     /// The server will expose the following endpoints:
     ///
-    /// - `GET` on any path: serves the metrics in the Open Metrics text format
+    /// - `GET` on any path: serves the metrics in the OpenMetrics text format
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if binding to the specified address fails.
-    pub async fn start(self, bind_address: SocketAddr) {
+    /// Returns an error if binding to the specified address fails.
+    pub async fn start(self, bind_address: SocketAddr) -> hyper::Result<()> {
         tracing::info!("Starting Prometheus exporter web server on {bind_address}");
-
-        Server::bind(&bind_address)
-            .serve(make_service_fn(move |_| {
-                let inner = self.inner.clone();
-                future::ready(Ok::<_, hyper::Error>(service_fn(move |_| {
-                    let inner = inner.clone();
-                    async move { Ok::<_, hyper::Error>(inner.render()) }
-                })))
-            }))
-            .with_graceful_shutdown(async move {
-                self.shutdown_future.await;
-                tracing::info!(
-                    "Stop signal received, Prometheus metrics exporter is shutting down"
-                );
-            })
-            .await
-            .expect("Metrics server failed to start");
-
+        self.bind(bind_address)?.start().await?;
         tracing::info!("Prometheus metrics exporter server shut down");
+        Ok(())
+    }
+
+    /// Creates an HTTP exporter server and binds it to the specified address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if binding to the specified address fails.
+    pub fn bind(self, bind_address: SocketAddr) -> hyper::Result<MetricsServer> {
+        let server = Server::try_bind(&bind_address)?.serve(make_service_fn(move |_| {
+            let inner = self.inner.clone();
+            future::ready(Ok::<_, hyper::Error>(service_fn(move |_| {
+                let inner = inner.clone();
+                async move { Ok::<_, hyper::Error>(inner.render()) }
+            })))
+        }));
+        let local_addr = server.local_addr();
+
+        let server = server.with_graceful_shutdown(async move {
+            self.shutdown_future.await;
+            tracing::info!("Stop signal received, Prometheus metrics exporter is shutting down");
+        });
+        Ok(MetricsServer {
+            server: Box::pin(server),
+            local_addr,
+        })
     }
 
     /// Starts pushing metrics to the `endpoint` with the specified `interval` between pushes.
@@ -406,7 +363,7 @@ impl MetricsExporter {
             let request = Request::builder()
                 .method(Method::PUT)
                 .uri(endpoint.clone())
-                .header(header::CONTENT_TYPE, TEXT_CONTENT_TYPE)
+                .header(header::CONTENT_TYPE, Format::OPEN_METRICS_CONTENT_TYPE)
                 .body(self.inner.render_body())
                 .expect("Failed creating Prometheus push gateway request");
 
@@ -455,7 +412,39 @@ impl MetricsExporter {
     }
 }
 
-const TEXT_CONTENT_TYPE: &str = "application/openmetrics-text; version=1.0.0; charset=utf-8";
+/// Metrics server bound to a certain local address returned by [`MetricsExporter::bind()`].
+///
+/// Useful e.g. if you need to find out which port the server was bound to if the 0th port was specified.
+#[must_use = "Server should be `start()`ed"]
+pub struct MetricsServer {
+    server: Pin<Box<dyn Future<Output = hyper::Result<()>> + Send>>,
+    local_addr: SocketAddr,
+}
+
+impl fmt::Debug for MetricsServer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MetricsServer")
+            .field("local_addr", &self.local_addr)
+            .finish_non_exhaustive()
+    }
+}
+
+impl MetricsServer {
+    /// Returns the local address this server is bound to.
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    /// Starts this server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if starting the server operation fails.
+    pub async fn start(self) -> hyper::Result<()> {
+        self.server.await
+    }
+}
 
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");
@@ -499,29 +488,6 @@ mod tests {
 
     #[vise::register]
     static TEST_METRICS: Global<TestMetrics> = Global::new();
-
-    #[test]
-    fn transforming_open_metrics_text_format() {
-        let input = "\
-            # TYPE modern_counter counter\n\
-            modern_counter_total 1\n\
-            # TYPE modern_gauge gauge\n\
-            modern_gauge{label=\"value\"} 23\n\
-            # TYPE modern_counter_with_labels counter\n\
-            modern_counter_with_labels_total{label=\"value\"} 3\n\
-            modern_counter_with_labels_total{label=\"other\"} 5";
-        let expected = "\
-            # TYPE modern_counter counter\n\
-            modern_counter 1\n\
-            # TYPE modern_gauge gauge\n\
-            modern_gauge{label=\"value\"} 23\n\
-            # TYPE modern_counter_with_labels counter\n\
-            modern_counter_with_labels{label=\"value\"} 3\n\
-            modern_counter_with_labels{label=\"other\"} 5\n";
-
-        let transformed = MetricsExporterInner::transform_new_metrics(input);
-        assert_eq!(transformed, expected);
-    }
 
     #[cfg(feature = "legacy")]
     fn init_legacy_exporter(builder: PrometheusBuilder) -> PrometheusBuilder {
@@ -675,7 +641,10 @@ mod tests {
                     .await
                     .expect("timed out waiting for metrics push")
                     .unwrap();
-            assert_eq!(request_headers[&header::CONTENT_TYPE], TEXT_CONTENT_TYPE);
+            assert_eq!(
+                request_headers[&header::CONTENT_TYPE],
+                Format::OPEN_METRICS_CONTENT_TYPE
+            );
             assert_scraped_payload_is_valid(&request_body);
         }
     }

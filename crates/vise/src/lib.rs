@@ -13,7 +13,7 @@
 //!   full metric names and records additional metadata, such as help (from doc comments), unit of measurement
 //!   and [`Buckets`] for histograms.
 //! - Metric groups are registered in a [`Registry`], which then allows to [encode](Registry::encode())
-//!   metric data in the Open Metrics text format. Registration can be automated using the [`register`]
+//!   metric data in the OpenMetrics text format. Registration can be automated using the [`register`]
 //!   attribute, but it can be manual as well.
 //! - In order to allow for metrics computed during scraping, you can use [`Collector`].
 //!
@@ -361,6 +361,7 @@ mod buckets;
 mod builder;
 mod collector;
 pub mod descriptors;
+mod format;
 mod metrics;
 mod registry;
 #[cfg(test)]
@@ -372,6 +373,7 @@ pub use crate::{
     buckets::Buckets,
     builder::{BuildMetric, MetricBuilder},
     collector::{BeforeScrapeError, Collector},
+    format::Format,
     metrics::{Global, Metrics},
     registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
     wrappers::{Family, Gauge, Histogram, LabeledFamily, LatencyObserver},
