@@ -6,8 +6,8 @@ use tokio::sync::watch;
 use std::{env, time::Duration};
 
 use vise::{
-    Buckets, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Histogram, LabeledFamily,
-    Metrics, Unit,
+    Buckets, Counter, EncodeLabelSet, EncodeLabelValue, Family, Format, Gauge, Histogram,
+    LabeledFamily, Metrics, Unit,
 };
 use vise_exporter::MetricsExporter;
 
@@ -97,12 +97,19 @@ async fn main() {
     const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 
     let mut args: Vec<_> = env::args().skip(1).collect();
-    let produce_legacy_metrics = if args.len() == 2 && args[0] == "--legacy" {
+    let produce_legacy_metrics = if !args.is_empty() && args[0] == "--legacy" {
         args.remove(0);
         true
     } else {
         false
     };
+    let export_format = if !args.is_empty() && args[0] == "--format-prometheus" {
+        args.remove(0);
+        Some(Format::Prometheus)
+    } else {
+        None
+    };
+
     let bind_address = args
         .get(0)
         .expect("Bind address must be provided as first command-line arg");
@@ -122,6 +129,9 @@ async fn main() {
                 .set_buckets(&[0.001, 0.005, 0.025, 0.1, 0.25, 1.0, 5.0, 30.0, 120.0])
                 .unwrap()
         });
+    }
+    if let Some(format) = export_format {
+        exporter = exporter.with_format(format);
     }
 
     let exporter_server = exporter
