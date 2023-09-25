@@ -1564,6 +1564,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "metrics",
  "prometheus-http-query",
  "rand",
  "tempfile",

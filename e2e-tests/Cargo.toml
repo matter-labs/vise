@@ -9,8 +9,9 @@ publish = false
 
 [dependencies]
 vise = { path = "../crates/vise" }
-vise-exporter = { path = "../crates/vise-exporter" }
+vise-exporter = { path = "../crates/vise-exporter", features = ["legacy"] }
 
+metrics.workspace = true
 rand.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "signal"] }
 

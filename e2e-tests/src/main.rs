@@ -60,6 +60,33 @@ impl TestMetrics {
                 .observe(Duration::from_millis(rng.gen_range(0..1_000)));
         }
     }
+
+    fn generate_legacy_metrics(rng: &mut impl Rng) {
+        metrics::counter!("legacy_counter", 1);
+        metrics::gauge!("legacy_gauge", rng.gen_range(0..1_000_000) as f64);
+        metrics::gauge!(
+            "legacy_family_of_gauges",
+            rng.gen_range(0.0..1.0),
+            "method" => "call"
+        );
+        metrics::gauge!(
+            "legacy_family_of_gauges",
+            rng.gen_range(0.0..1.0),
+            "method" => "send_transaction"
+        );
+
+        for _ in 0..5 {
+            metrics::histogram!(
+                "legacy_histogram",
+                Duration::from_millis(rng.gen_range(0..100))
+            );
+            metrics::histogram!(
+                "legacy_family_of_histograms",
+                Duration::from_micros(rng.gen_range(0..100)),
+                "method" => "call"
+            );
+        }
+    }
 }
 
 #[vise::register]
@@ -69,8 +96,15 @@ static METRICS: vise::Global<TestMetrics> = vise::Global::new();
 async fn main() {
     const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 
-    let bind_address = env::args()
-        .nth(1)
+    let mut args: Vec<_> = env::args().skip(1).collect();
+    let produce_legacy_metrics = if args.len() == 2 && args[0] == "--legacy" {
+        args.remove(0);
+        true
+    } else {
+        false
+    };
+    let bind_address = args
+        .get(0)
         .expect("Bind address must be provided as first command-line arg");
     let bind_address = bind_address.parse().expect("Bind address is invalid");
 
@@ -81,7 +115,16 @@ async fn main() {
     });
 
     let mut stop_receiver_copy = stop_receiver.clone();
-    let exporter_server = MetricsExporter::default()
+    let mut exporter = MetricsExporter::default();
+    if produce_legacy_metrics {
+        exporter = exporter.with_legacy_exporter(|builder| {
+            builder
+                .set_buckets(&[0.001, 0.005, 0.025, 0.1, 0.25, 1.0, 5.0, 30.0, 120.0])
+                .unwrap()
+        });
+    }
+
+    let exporter_server = exporter
         .with_graceful_shutdown(async move {
             stop_receiver_copy.changed().await.ok();
         })
@@ -96,6 +139,9 @@ async fn main() {
     let mut rng = thread_rng();
     loop {
         METRICS.generate_metrics(&mut rng);
+        if produce_legacy_metrics {
+            TestMetrics::generate_legacy_metrics(&mut rng);
+        }
         tokio::select! {
             _ = stop_receiver.changed() => break,
             () = tokio::time::sleep(METRICS_INTERVAL) => { /* continue looping */ }
