@@ -87,11 +87,10 @@ mod metrics;
 use crate::metrics::{Facade, EXPORTER_METRICS};
 use vise::{Format, Registry};
 
-// FIXME: allow customizing format; test on real app
-
 #[derive(Clone)]
 struct MetricsExporterInner {
     registry: Arc<Registry>,
+    format: Format,
     #[cfg(feature = "legacy")]
     legacy_exporter: Option<&'static PrometheusHandle>,
 }
@@ -102,9 +101,7 @@ impl MetricsExporterInner {
 
         let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
         let mut new_buffer = String::with_capacity(1_024);
-        self.registry
-            .encode(&mut new_buffer, Format::OpenMetricsForPrometheus)
-            .unwrap();
+        self.registry.encode(&mut new_buffer, self.format).unwrap();
         // ^ `unwrap()` is safe; writing to a string never fails.
 
         let latency = latency.observe();
@@ -149,6 +146,7 @@ impl MetricsExporterInner {
     }
 
     /// Transforms legacy metrics from the Prometheus text format to the OpenMetrics one.
+    /// The output format is still accepted by Prometheus.
     ///
     /// This transform:
     ///
@@ -165,9 +163,14 @@ impl MetricsExporterInner {
 
     // TODO: consider using a streaming response?
     fn render(&self) -> Response<Body> {
+        let content_type = if matches!(self.format, Format::Prometheus) {
+            Format::PROMETHEUS_CONTENT_TYPE
+        } else {
+            Format::OPEN_METRICS_CONTENT_TYPE
+        };
         Response::builder()
             .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, Format::OPEN_METRICS_CONTENT_TYPE)
+            .header(header::CONTENT_TYPE, content_type)
             .body(self.render_body())
             .unwrap()
     }
@@ -213,6 +216,7 @@ impl MetricsExporter {
         Self {
             inner: MetricsExporterInner {
                 registry,
+                format: Format::OpenMetricsForPrometheus,
                 #[cfg(feature = "legacy")]
                 legacy_exporter: None,
             },
@@ -244,6 +248,17 @@ impl MetricsExporter {
         tracing::info!(
             "Created metrics exporter with {metric_count} metrics in {group_count} groups from crates {crates}"
         );
+    }
+
+    /// Sets the export [`Format`]. By default, [`Format::OpenMetricsForPrometheus`] is used
+    /// (i.e., OpenMetrics text format with minor changes so that it is fully parsed by Prometheus).
+    ///
+    /// See `Format` docs for more details on differences between export formats. Note that using
+    /// [`Format::OpenMetrics`] is not fully supported by Prometheus at the time of writing.
+    #[must_use]
+    pub fn with_format(mut self, format: Format) -> Self {
+        self.inner.format = format;
+        self
     }
 
     /// Installs a legacy exporter for the metrics defined using the `metrics` façade. The specified
