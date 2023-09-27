@@ -186,12 +186,12 @@ impl MetricsExporterInner {
 /// # Examples
 ///
 /// See crate-level docs for the examples of usage.
-pub struct MetricsExporter {
+pub struct MetricsExporter<'a> {
     inner: MetricsExporterInner,
-    shutdown_future: Pin<Box<dyn Future<Output = ()> + Send>>,
+    shutdown_future: Pin<Box<dyn Future<Output = ()> + Send + 'a>>,
 }
 
-impl fmt::Debug for MetricsExporter {
+impl fmt::Debug for MetricsExporter<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("MetricsExporter")
@@ -202,13 +202,13 @@ impl fmt::Debug for MetricsExporter {
 
 /// Creates an exporter based on [`Registry::collect()`] output (i.e., with all metrics registered
 /// by the app and libs it depends on).
-impl Default for MetricsExporter {
+impl Default for MetricsExporter<'_> {
     fn default() -> Self {
         Self::new(Registry::collect().into())
     }
 }
 
-impl MetricsExporter {
+impl<'a> MetricsExporter<'a> {
     /// Creates an exporter based on the provided metrics [`Registry`]. Note that the registry
     /// is in `Arc`, meaning it can be used elsewhere (e.g., to export data in another format).
     pub fn new(registry: Arc<Registry>) -> Self {
@@ -296,7 +296,7 @@ impl MetricsExporter {
     #[must_use]
     pub fn with_graceful_shutdown<F>(mut self, shutdown: F) -> Self
     where
-        F: Future<Output = ()> + Send + 'static,
+        F: Future<Output = ()> + Send + 'a,
     {
         self.shutdown_future = Box::pin(shutdown);
         self
@@ -306,7 +306,7 @@ impl MetricsExporter {
     ///
     /// The server will expose the following endpoints:
     ///
-    /// - `GET` on any path: serves the metrics in the OpenMetrics text format
+    /// - `GET` on any path: serves the metrics in the text format configured using [`Self::with_format()`]
     ///
     /// # Errors
     ///
@@ -323,7 +323,7 @@ impl MetricsExporter {
     /// # Errors
     ///
     /// Returns an error if binding to the specified address fails.
-    pub fn bind(self, bind_address: SocketAddr) -> hyper::Result<MetricsServer> {
+    pub fn bind(self, bind_address: SocketAddr) -> hyper::Result<MetricsServer<'a>> {
         let server = Server::try_bind(&bind_address)?.serve(make_service_fn(move |_| {
             let inner = self.inner.clone();
             future::ready(Ok::<_, hyper::Error>(service_fn(move |_| {
@@ -371,7 +371,7 @@ impl MetricsExporter {
                 Ok(response) => {
                     if !response.status().is_success() {
                         // Do not block further pushes during error handling.
-                        tokio::spawn(Self::report_erroneous_response(response));
+                        tokio::spawn(report_erroneous_response(response));
                     }
                 }
                 Err(err) => {
@@ -380,48 +380,48 @@ impl MetricsExporter {
             }
         }
     }
+}
 
-    async fn report_erroneous_response(response: Response<Body>) {
-        let status = response.status();
-        let body = match body::to_bytes(response.into_body()).await {
-            Ok(body) => body,
-            Err(err) => {
-                tracing::error!(
-                    %err,
-                    %status,
-                    "Failed reading erroneous response from Prometheus push gateway"
-                );
-                return;
-            }
-        };
+async fn report_erroneous_response(response: Response<Body>) {
+    let status = response.status();
+    let body = match body::to_bytes(response.into_body()).await {
+        Ok(body) => body,
+        Err(err) => {
+            tracing::error!(
+                %err,
+                %status,
+                "Failed reading erroneous response from Prometheus push gateway"
+            );
+            return;
+        }
+    };
 
-        let err_body: String;
-        let body = match str::from_utf8(&body) {
-            Ok(body) => body,
-            Err(err) => {
-                let body_length = body.len();
-                err_body = format!("(Non UTF-8 body with length {body_length}B: {err})");
-                &err_body
-            }
-        };
-        tracing::warn!(
-            %status,
-            %body,
-            "Error pushing metrics to Prometheus push gateway"
-        );
-    }
+    let err_body: String;
+    let body = match str::from_utf8(&body) {
+        Ok(body) => body,
+        Err(err) => {
+            let body_length = body.len();
+            err_body = format!("(Non UTF-8 body with length {body_length}B: {err})");
+            &err_body
+        }
+    };
+    tracing::warn!(
+        %status,
+        %body,
+        "Error pushing metrics to Prometheus push gateway"
+    );
 }
 
 /// Metrics server bound to a certain local address returned by [`MetricsExporter::bind()`].
 ///
 /// Useful e.g. if you need to find out which port the server was bound to if the 0th port was specified.
 #[must_use = "Server should be `start()`ed"]
-pub struct MetricsServer {
-    server: Pin<Box<dyn Future<Output = hyper::Result<()>> + Send>>,
+pub struct MetricsServer<'a> {
+    server: Pin<Box<dyn Future<Output = hyper::Result<()>> + Send + 'a>>,
     local_addr: SocketAddr,
 }
 
-impl fmt::Debug for MetricsServer {
+impl fmt::Debug for MetricsServer<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("MetricsServer")
@@ -430,7 +430,7 @@ impl fmt::Debug for MetricsServer {
     }
 }
 
-impl MetricsServer {
+impl MetricsServer<'_> {
     /// Returns the local address this server is bound to.
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
