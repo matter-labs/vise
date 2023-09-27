@@ -56,6 +56,17 @@ impl<V: GaugeValue> Gauge<V> {
         self.0.inc_by(v)
     }
 
+    /// Increases this [`Gauge`] by `v` and returns a guard that will decrement this value back
+    /// when dropped. This can be useful for gauges that measure consumption of a certain resource.
+    pub fn inc_guard(&self, v: V) -> GaugeGuard<V> {
+        let guard = GaugeGuard {
+            gauge: self.clone(),
+            increment: v,
+        };
+        self.0.inc_by(v);
+        guard
+    }
+
     /// Decreases this [`Gauge`] by `v`, returning the previous value.
     ///
     /// # Panics
@@ -91,6 +102,20 @@ impl<V: GaugeValue> EncodeMetric for Gauge<V> {
 
 impl<V: GaugeValue> TypedMetric for Gauge<V> {
     const TYPE: MetricType = MetricType::Gauge;
+}
+
+/// Guard for a [`Gauge`] returned by [`Gauge::inc_guard()`]. When dropped, a guard decrements
+/// the gauge by the same value that it was increased by when creating the guard.
+#[derive(Debug)]
+pub struct GaugeGuard<V: GaugeValue = i64> {
+    gauge: Gauge<V>,
+    increment: V,
+}
+
+impl<V: GaugeValue> Drop for GaugeGuard<V> {
+    fn drop(&mut self) {
+        self.gauge.dec_by(self.increment);
+    }
 }
 
 /// Histogram metric.

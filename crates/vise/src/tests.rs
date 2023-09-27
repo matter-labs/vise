@@ -149,6 +149,18 @@ fn testing_metrics() {
     }
 }
 
+#[test]
+fn using_gauge_guard() {
+    let test_metrics: TestMetrics = TestMetrics::default();
+    let guard = test_metrics.gauge.inc_guard(5);
+    let other_guard = test_metrics.gauge.inc_guard(3);
+    assert_eq!(test_metrics.gauge.get(), 8);
+    drop(other_guard);
+    assert_eq!(test_metrics.gauge.get(), 5);
+    drop(guard);
+    assert_eq!(test_metrics.gauge.get(), 0);
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet)]
 #[metrics(crate = crate)]
 struct Labels {
