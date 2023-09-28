@@ -90,7 +90,17 @@ impl Default for MetricsCollection {
 impl MetricsCollection {
     /// Specifies that metrics should be lazily exported.
     ///
-    /// FIXME: explain in more detail
+    /// By default, [`Global`] metrics are eagerly collected into a [`Registry`]; i.e., metrics will get exported
+    /// even if they were never modified by the app / library logic. This is *usually* fine (e.g.,
+    /// this allows getting all metrics metadata on the first scrape), but sometimes you may want to
+    /// export only metrics touched by the app / library logic. E.g., you have a single app binary
+    /// that exposes different sets of metrics depending on configuration, and exporting all metrics
+    /// is confusing and/or unacceptably bloats exported data size.
+    ///
+    /// `lazy()` solves this issue. It will configure the created `Registry` so that `Global` metrics
+    /// are only exported after they are touched by the app / library logic. Beware that this includes
+    /// being touched by an eager `MetricsCollection` (only metrics actually included into the collection
+    /// are touched).
     pub fn lazy() -> Self {
         Self {
             is_lazy: true,
