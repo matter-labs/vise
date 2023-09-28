@@ -9,10 +9,10 @@ use prometheus_client::{
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    collector::Collector,
+    collector::{Collector, LazyCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
     format::{Format, PrometheusWrapper},
-    Metrics,
+    Global, Metrics,
 };
 
 #[doc(hidden)] // only used by the proc macros
@@ -33,6 +33,7 @@ impl FullMetricDescriptor {
     }
 }
 
+/// Descriptors of all metrics in a registry.
 #[derive(Debug, Default)]
 pub struct RegisteredDescriptors {
     groups: Vec<&'static MetricGroupDescriptor>,
@@ -71,6 +72,33 @@ impl RegisteredDescriptors {
             }
         }
         self.groups.push(group);
+    }
+}
+
+/// Configures collection of [`register`](crate::register)ed metrics.
+#[derive(Debug, Default)]
+pub struct MetricsCollection {
+    is_lazy: bool,
+}
+
+impl MetricsCollection {
+    /// Specifies that metrics should be lazily exported.
+    ///
+    /// FIXME: explain in more detail
+    pub fn lazy() -> Self {
+        Self { is_lazy: true }
+    }
+
+    /// Creates a registry with all [`register`](crate::register)ed [`Metrics`](crate::Metrics) implementations
+    /// and [`Collector`]s.
+    // TODO: allow filtering metrics (by a descriptor predicate?)
+    pub fn collect(self) -> Registry {
+        let mut registry = Registry::empty();
+        registry.is_lazy = self.is_lazy;
+        for metric_fn in METRICS_REGISTRATIONS {
+            (metric_fn)(&mut registry);
+        }
+        registry
     }
 }
 
@@ -138,6 +166,7 @@ impl RegisteredDescriptors {
 pub struct Registry {
     descriptors: RegisteredDescriptors,
     inner: RegistryInner,
+    is_lazy: bool,
 }
 
 impl Registry {
@@ -146,17 +175,8 @@ impl Registry {
         Self {
             descriptors: RegisteredDescriptors::default(),
             inner: RegistryInner::default(),
+            is_lazy: false,
         }
-    }
-
-    /// Creates a registry with all [`Metrics`](crate::Metrics) implementations automatically injected.
-    // TODO: allow filtering metrics (by a descriptor predicate?)
-    pub fn collect() -> Self {
-        let mut this = Self::empty();
-        for metric_fn in METRICS_REGISTRATIONS {
-            (metric_fn)(&mut this);
-        }
-        this
     }
 
     /// Returns descriptors for all registered metrics.
@@ -169,6 +189,16 @@ impl Registry {
         self.descriptors.push(&M::DESCRIPTOR);
         let visitor = MetricsVisitor(MetricsVisitorInner::Registry(self));
         metrics.visit_metrics(visitor);
+    }
+
+    pub(crate) fn register_global_metrics<M: Metrics>(&mut self, metrics: &'static Global<M>) {
+        if self.is_lazy {
+            self.descriptors.push(&M::DESCRIPTOR);
+            let collector = LazyCollector::new(metrics);
+            self.inner.register_collector(Box::new(collector));
+        } else {
+            self.register_metrics::<M>(metrics);
+        }
     }
 
     /// Registers a [`Collector`].

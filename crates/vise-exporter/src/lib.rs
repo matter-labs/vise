@@ -85,7 +85,7 @@ use std::{
 mod metrics;
 
 use crate::metrics::{Facade, EXPORTER_METRICS};
-use vise::{Format, Registry};
+use vise::{Format, MetricsCollection, Registry};
 
 #[derive(Clone)]
 struct MetricsExporterInner {
@@ -204,7 +204,7 @@ impl fmt::Debug for MetricsExporter {
 /// by the app and libs it depends on).
 impl Default for MetricsExporter {
     fn default() -> Self {
-        Self::new(Registry::collect().into())
+        Self::new(MetricsCollection::default().collect().into())
     }
 }
 
@@ -498,7 +498,7 @@ mod tests {
     #[tokio::test]
     async fn legacy_and_modern_metrics_can_coexist() {
         let _guard = TEST_MUTEX.lock().await;
-        let exporter = MetricsExporter::new(Registry::collect().into());
+        let exporter = MetricsExporter::default();
         #[cfg(feature = "legacy")]
         let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
         report_metrics();
@@ -626,7 +626,7 @@ mod tests {
         let local_addr = mock_server.local_addr();
         tokio::spawn(mock_server);
 
-        let exporter = MetricsExporter::new(Registry::collect().into());
+        let exporter = MetricsExporter::default();
         #[cfg(feature = "legacy")]
         let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
         report_metrics();

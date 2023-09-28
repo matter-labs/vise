@@ -1,4 +1,4 @@
-use once_cell::sync::OnceCell;
+use once_cell::sync::{Lazy, OnceCell};
 use prometheus_client::{
     collector::Collector as CollectorTrait,
     registry::{Descriptor, LocalMetric},
@@ -9,7 +9,7 @@ use std::{borrow::Cow, error, fmt, iter};
 
 use crate::{
     registry::{CollectToRegistry, MetricsVisitor, Registry},
-    Metrics,
+    Global, Metrics,
 };
 
 type CollectorFn<M> = Box<dyn Fn() -> M + Send + Sync>;
@@ -30,7 +30,7 @@ impl error::Error for BeforeScrapeError {}
 /// Collector allowing to define metrics dynamically.
 ///
 /// In essence, a collector is a lazily initialized closure producing [`Metrics`] which is called
-/// each time a [`Registry`](crate::Registry) it's registered with is being scraped.
+/// each time a [`Registry`] it's registered with is being scraped.
 ///
 /// ## Sharing state
 ///
@@ -81,22 +81,50 @@ impl<M: Metrics> Collector<M> {
 impl<M: Metrics> CollectorTrait for &'static Collector<M> {
     fn collect<'a>(&'a self) -> Box<dyn Iterator<Item = CollectorItem<'a>> + 'a> {
         if let Some(hook) = self.inner.get() {
-            let metrics = hook();
-            let mut boxed_metrics = vec![];
-            metrics.visit_metrics(MetricsVisitor::for_collector(&mut boxed_metrics));
-            let it = boxed_metrics
-                .into_iter()
-                .map(|(descriptor, metric)| (Cow::Owned(descriptor), MaybeOwned::Owned(metric)));
-            Box::new(it)
+            Box::new(collect_metrics(&hook()))
         } else {
             Box::new(iter::empty())
         }
     }
 }
 
+fn collect_metrics<'a>(metrics: &impl Metrics) -> impl Iterator<Item = CollectorItem<'a>> {
+    let mut boxed_metrics = vec![];
+    metrics.visit_metrics(MetricsVisitor::for_collector(&mut boxed_metrics));
+    boxed_metrics
+        .into_iter()
+        .map(|(descriptor, metric)| (Cow::Owned(descriptor), MaybeOwned::Owned(metric)))
+}
+
 impl<M: Metrics> CollectToRegistry for Collector<M> {
     fn collect_to_registry(&'static self, registry: &mut Registry) {
         registry.register_collector(self);
+    }
+}
+
+pub(crate) struct LazyCollector<M: Metrics>(&'static Lazy<M>);
+
+impl<M: Metrics> fmt::Debug for LazyCollector<M> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LazyCollector")
+            .finish_non_exhaustive()
+    }
+}
+
+impl<M: Metrics> LazyCollector<M> {
+    pub(crate) fn new(metrics: &'static Global<M>) -> Self {
+        Self(&metrics.0)
+    }
+}
+
+impl<M: Metrics> CollectorTrait for LazyCollector<M> {
+    fn collect<'a>(&'a self) -> Box<dyn Iterator<Item = CollectorItem<'a>> + 'a> {
+        if let Some(metrics) = Lazy::get(self.0) {
+            Box::new(collect_metrics(metrics))
+        } else {
+            Box::new(iter::empty())
+        }
     }
 }
 

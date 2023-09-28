@@ -375,7 +375,10 @@ pub use crate::{
     collector::{BeforeScrapeError, Collector},
     format::Format,
     metrics::{Global, Metrics},
-    registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
+    registry::{
+        CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
+        METRICS_REGISTRATIONS,
+    },
     wrappers::{Family, Gauge, Histogram, LabeledFamily, LatencyObserver},
 };
 

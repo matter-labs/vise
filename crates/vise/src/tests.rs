@@ -45,7 +45,7 @@ static TEST_METRICS: Global<TestMetrics> = Global::new();
 
 #[test]
 fn metrics_registration() {
-    let registry = Registry::collect();
+    let registry = MetricsCollection::default().collect();
     let descriptors = registry.descriptors();
 
     assert!(descriptors.metric_count() > 5);
@@ -65,9 +65,9 @@ fn metrics_registration() {
 
 #[test]
 fn testing_metrics() {
-    let test_metrics = &*TEST_METRICS;
+    let test_metrics = TestMetrics::default();
     let mut registry = Registry::empty();
-    registry.register_metrics(test_metrics);
+    registry.register_metrics(&test_metrics);
 
     test_metrics.counter.inc();
     assert_eq!(test_metrics.counter.get(), 1);
