@@ -15,10 +15,6 @@ use crate::{
     Global, Metrics,
 };
 
-#[doc(hidden)] // only used by the proc macros
-#[distributed_slice]
-pub static METRICS_REGISTRATIONS: [fn(&mut Registry)] = [..];
-
 impl FullMetricDescriptor {
     fn format_for_panic(&self) -> String {
         format!(
@@ -76,9 +72,19 @@ impl RegisteredDescriptors {
 }
 
 /// Configures collection of [`register`](crate::register)ed metrics.
-#[derive(Debug, Default)]
-pub struct MetricsCollection {
+#[derive(Debug)]
+pub struct MetricsCollection<F = fn(&MetricGroupDescriptor) -> bool> {
     is_lazy: bool,
+    filter_fn: F,
+}
+
+impl Default for MetricsCollection {
+    fn default() -> Self {
+        Self {
+            is_lazy: false,
+            filter_fn: |_| true,
+        }
+    }
 }
 
 impl MetricsCollection {
@@ -86,17 +92,34 @@ impl MetricsCollection {
     ///
     /// FIXME: explain in more detail
     pub fn lazy() -> Self {
-        Self { is_lazy: true }
+        Self {
+            is_lazy: true,
+            ..Self::default()
+        }
     }
 
+    /// Configures a filtering function for this collection.
+    pub fn filter<F>(self, filter_fn: F) -> MetricsCollection<F>
+    where
+        F: FnMut(&MetricGroupDescriptor) -> bool,
+    {
+        MetricsCollection {
+            is_lazy: self.is_lazy,
+            filter_fn,
+        }
+    }
+}
+
+impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
     /// Creates a registry with all [`register`](crate::register)ed [`Metrics`](crate::Metrics) implementations
     /// and [`Collector`]s.
-    // TODO: allow filtering metrics (by a descriptor predicate?)
-    pub fn collect(self) -> Registry {
+    pub fn collect(mut self) -> Registry {
         let mut registry = Registry::empty();
         registry.is_lazy = self.is_lazy;
-        for metric_fn in METRICS_REGISTRATIONS {
-            (metric_fn)(&mut registry);
+        for metric in METRICS_REGISTRATIONS {
+            if (self.filter_fn)(metric.descriptor()) {
+                metric.collect_to_registry(&mut registry);
+            }
         }
         registry
     }
@@ -265,8 +288,14 @@ impl<'a> MetricsVisitor<'a> {
 }
 
 /// Collects metrics from this type to registry. This is used by the [`register`](crate::register)
-/// macro to handle registration of [`Global`](crate::Global) metrics and [`Collector`]s.
+/// macro to handle registration of [`Global`] metrics and [`Collector`]s.
 pub trait CollectToRegistry: 'static + Send + Sync {
+    #[doc(hidden)] // implementation detail
+    fn descriptor(&self) -> &'static MetricGroupDescriptor;
     #[doc(hidden)] // implementation detail
     fn collect_to_registry(&'static self, registry: &mut Registry);
 }
+
+#[doc(hidden)] // only used by the proc macros
+#[distributed_slice]
+pub static METRICS_REGISTRATIONS: [&'static dyn CollectToRegistry] = [..];

@@ -7,6 +7,7 @@ use prometheus_client::{
 
 use std::{borrow::Cow, error, fmt, iter};
 
+use crate::descriptors::MetricGroupDescriptor;
 use crate::{
     registry::{CollectToRegistry, MetricsVisitor, Registry},
     Global, Metrics,
@@ -97,6 +98,10 @@ fn collect_metrics<'a>(metrics: &impl Metrics) -> impl Iterator<Item = Collector
 }
 
 impl<M: Metrics> CollectToRegistry for Collector<M> {
+    fn descriptor(&self) -> &'static MetricGroupDescriptor {
+        &M::DESCRIPTOR
+    }
+
     fn collect_to_registry(&'static self, registry: &mut Registry) {
         registry.register_collector(self);
     }

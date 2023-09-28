@@ -60,6 +60,10 @@ impl<M: Metrics> ops::Deref for Global<M> {
 }
 
 impl<M: Metrics> CollectToRegistry for Global<M> {
+    fn descriptor(&self) -> &'static MetricGroupDescriptor {
+        &M::DESCRIPTOR
+    }
+
     fn collect_to_registry(&'static self, registry: &mut Registry) {
         registry.register_global_metrics(self);
     }
