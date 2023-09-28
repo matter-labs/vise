@@ -9,7 +9,7 @@ use prometheus_client::{
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    collector::{Collector, LazyCollector},
+    collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
     format::{Format, PrometheusWrapper},
     Global, Metrics,
@@ -227,7 +227,7 @@ impl Registry {
     pub(crate) fn register_global_metrics<M: Metrics>(&mut self, metrics: &'static Global<M>) {
         if self.is_lazy {
             self.descriptors.push(&M::DESCRIPTOR);
-            let collector = LazyCollector::new(metrics);
+            let collector = LazyGlobalCollector::new(metrics);
             self.inner.register_collector(Box::new(collector));
         } else {
             self.register_metrics::<M>(metrics);

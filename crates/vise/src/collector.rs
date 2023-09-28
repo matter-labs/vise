@@ -107,23 +107,25 @@ impl<M: Metrics> CollectToRegistry for Collector<M> {
     }
 }
 
-pub(crate) struct LazyCollector<M: Metrics>(&'static Lazy<M>);
+/// Lazy collector of `Global` metrics. Only exports metrics once they are initialized;
+/// does not initialize metrics on its own.
+pub(crate) struct LazyGlobalCollector<M: Metrics>(&'static Lazy<M>);
 
-impl<M: Metrics> fmt::Debug for LazyCollector<M> {
+impl<M: Metrics> fmt::Debug for LazyGlobalCollector<M> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("LazyCollector")
+            .debug_struct("LazyGlobalCollector")
             .finish_non_exhaustive()
     }
 }
 
-impl<M: Metrics> LazyCollector<M> {
+impl<M: Metrics> LazyGlobalCollector<M> {
     pub(crate) fn new(metrics: &'static Global<M>) -> Self {
         Self(&metrics.0)
     }
 }
 
-impl<M: Metrics> CollectorTrait for LazyCollector<M> {
+impl<M: Metrics> CollectorTrait for LazyGlobalCollector<M> {
     fn collect<'a>(&'a self) -> Box<dyn Iterator<Item = CollectorItem<'a>> + 'a> {
         if let Some(metrics) = Lazy::get(self.0) {
             Box::new(collect_metrics(metrics))
