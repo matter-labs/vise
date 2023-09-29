@@ -149,7 +149,7 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
 /// with [`Self::collect()`].
 ///
 /// ```
-/// use vise::{Buckets, Global, Histogram, Metrics, Registry, Unit};
+/// use vise::{Buckets, Global, Histogram, Metrics, MetricsCollection, Unit};
 /// # use assert_matches::assert_matches;
 /// use std::time::Duration;
 ///
@@ -165,7 +165,7 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
 /// // ^ Registers this instance for use with `Registry::collect()`
 /// pub(crate) static APP_METRICS: Global<AppMetrics> = Global::new();
 ///
-/// let registry = Registry::collect();
+/// let registry = MetricsCollection::default().collect();
 /// // Check that the registered metric is present
 /// let descriptor = registry
 ///     .descriptors()
@@ -178,7 +178,7 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
 /// `collect()` will panic if a metric is redefined:
 ///
 /// ```should_panic
-/// # use vise::{Collector, Global, Gauge, Metrics, Registry, Unit};
+/// # use vise::{Collector, Global, Gauge, Metrics, MetricsCollection, Unit};
 /// #[derive(Debug, Metrics)]
 /// pub(crate) struct AppMetrics {
 ///     #[metrics(unit = Unit::Bytes)]
@@ -193,7 +193,7 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
 /// #[vise::register]
 /// pub(crate) static APP_COLLECTOR: Collector<AppMetrics> = Collector::new();
 ///
-/// let registry = Registry::collect(); // will panic
+/// let registry = MetricsCollection::default().collect(); // will panic
 /// ```
 #[derive(Debug)]
 pub struct Registry {

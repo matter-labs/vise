@@ -63,7 +63,7 @@
 //! Commonly, metrics can be registered by defining a `static`:
 //!
 //! ```
-//! # use vise::{Gauge, Global, Metrics, Registry};
+//! # use vise::{Gauge, Global, Metrics, MetricsCollection, Registry};
 //! #[derive(Debug, Clone, Metrics)]
 //! pub(crate) struct MyMetrics {
 //! #   pub gauge: Gauge<u64>,
@@ -74,7 +74,7 @@
 //! pub(crate) static MY_METRICS: Global<MyMetrics> = Global::new();
 //!
 //! // All registered metrics can be collected in a `Registry`:
-//! let registry = Registry::collect();
+//! let registry: Registry = MetricsCollection::default().collect();
 //! // Do something with the `registry`, e.g. create an exporter.
 //!
 //! fn metered_logic() {
