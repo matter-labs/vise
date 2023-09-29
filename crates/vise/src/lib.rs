@@ -314,7 +314,7 @@ pub use vise_macros::EncodeLabelSet;
 pub use vise_macros::Metrics;
 
 /// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
-/// into registries instantiated using [`Registry::collect()`].
+/// into registries instantiated using [`MetricsCollection`].
 ///
 /// This macro must be placed on a static item of a type implementing [`CollectToRegistry`].
 ///

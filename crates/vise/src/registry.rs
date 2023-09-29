@@ -72,6 +72,10 @@ impl RegisteredDescriptors {
 }
 
 /// Configures collection of [`register`](crate::register)ed metrics.
+///
+/// # Examples
+///
+/// See [`Registry`] docs for examples of usage.
 #[derive(Debug)]
 pub struct MetricsCollection<F = fn(&MetricGroupDescriptor) -> bool> {
     is_lazy: bool,
@@ -108,7 +112,8 @@ impl MetricsCollection {
         }
     }
 
-    /// Configures a filtering function for this collection.
+    /// Configures a filtering predicate for this collection. Only [`Metrics`] with a descriptor
+    /// satisfying this will be [collected](MetricsCollection::collect()).
     pub fn filter<F>(self, filter_fn: F) -> MetricsCollection<F>
     where
         F: FnMut(&MetricGroupDescriptor) -> bool,
@@ -121,8 +126,9 @@ impl MetricsCollection {
 }
 
 impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
-    /// Creates a registry with all [`register`](crate::register)ed [`Metrics`](crate::Metrics) implementations
-    /// and [`Collector`]s.
+    /// Creates a registry with all [`register`](crate::register)ed [`Global`] metrics
+    /// and [`Collector`]s. If a filtering predicate [was provided](MetricsCollection::filter()),
+    /// only metrics satisfying this function will be collected.
     pub fn collect(mut self) -> Registry {
         let mut registry = Registry::empty();
         registry.is_lazy = self.is_lazy;
@@ -138,7 +144,7 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
 /// Metrics registry.
 ///
 /// A registry collects [`Metrics`] and [`Collector`]s defined in an app and libs the app depends on.
-/// Then, these metrics can be scraped by calling [`Self::encode()`] or [`Self::encode_to_text()`].
+/// Then, these metrics can be scraped by calling [`Self::encode()`].
 ///
 /// # Collecting metrics
 ///
@@ -146,10 +152,10 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
 /// and [`Self::register_collector()`]. However, this can become untenable for large apps
 /// with a complex dependency graph. As an alternative, you may use [`register`](crate::register) attributes
 /// to mark [`Metrics`] and [`Collector`]s that should be present in the registry, and then initialize the registry
-/// with [`Self::collect()`].
+/// with [`MetricsCollection`] methods.
 ///
 /// ```
-/// use vise::{Buckets, Global, Histogram, Metrics, MetricsCollection, Unit};
+/// use vise::{Buckets, Global, Histogram, Metrics, MetricsCollection, Registry, Unit};
 /// # use assert_matches::assert_matches;
 /// use std::time::Duration;
 ///
@@ -162,10 +168,10 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
 /// }
 ///
 /// #[vise::register]
-/// // ^ Registers this instance for use with `Registry::collect()`
+/// // ^ Registers this instance for use with `MetricsCollection::collect()`
 /// pub(crate) static APP_METRICS: Global<AppMetrics> = Global::new();
 ///
-/// let registry = MetricsCollection::default().collect();
+/// let registry: Registry = MetricsCollection::default().collect();
 /// // Check that the registered metric is present
 /// let descriptor = registry
 ///     .descriptors()
@@ -173,6 +179,17 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
 ///     .unwrap();
 /// assert_eq!(descriptor.metric.help, "Latency of requests served by the app");
 /// assert_matches!(descriptor.metric.unit, Some(Unit::Seconds));
+/// ```
+///
+/// Registered metrics can be filtered. This is useful if you want to avoid exporting certain metrics
+/// under certain conditions.
+///
+/// ```
+/// # use vise::{MetricsCollection, Registry};
+/// let filtered_registry: Registry = MetricsCollection::default()
+///     .filter(|group| group.name == "AppMetrics")
+///     .collect();
+/// // Do something with `filtered_registry`...
 /// ```
 ///
 /// `collect()` will panic if a metric is redefined:

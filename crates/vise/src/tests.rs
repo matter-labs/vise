@@ -185,7 +185,7 @@ fn lazy_metrics_registration() {
         /// Test counter.
         counter: Counter,
         /// Histogram with inline bucket specification.
-        #[metrics(buckets = & [0.001, 0.002, 0.005, 0.01, 0.1])]
+        #[metrics(buckets = &[0.001, 0.002, 0.005, 0.01, 0.1])]
         histogram: Histogram<Duration>,
     }
 

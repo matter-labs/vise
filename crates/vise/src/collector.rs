@@ -7,8 +7,8 @@ use prometheus_client::{
 
 use std::{borrow::Cow, error, fmt, iter};
 
-use crate::descriptors::MetricGroupDescriptor;
 use crate::{
+    descriptors::MetricGroupDescriptor,
     registry::{CollectToRegistry, MetricsVisitor, Registry},
     Global, Metrics,
 };
