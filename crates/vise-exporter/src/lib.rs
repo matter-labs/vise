@@ -79,7 +79,7 @@ use std::{
     pin::Pin,
     str,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 mod metrics;
@@ -346,12 +346,17 @@ impl MetricsExporter {
     /// Starts pushing metrics to the `endpoint` with the specified `interval` between pushes.
     #[allow(clippy::missing_panics_doc)]
     pub async fn push_to_gateway(self, endpoint: Uri, interval: Duration) {
+        /// Minimum interval between error logs. Prevents spanning logs at `WARN` / `ERROR` level
+        /// too frequently if `interval` is low (e.g., 1s).
+        const ERROR_LOG_INTERVAL: Duration = Duration::from_secs(60);
+
         tracing::info!(
             "Starting push-based Prometheus exporter to `{endpoint}` with push interval {interval:?}"
         );
 
         let client = Client::new();
         let mut shutdown = self.shutdown_future;
+        let mut last_error_log_timestamp = None::<Instant>;
         loop {
             if tokio::time::timeout(interval, &mut shutdown).await.is_ok() {
                 tracing::info!(
@@ -370,18 +375,37 @@ impl MetricsExporter {
             match client.request(request).await {
                 Ok(response) => {
                     if !response.status().is_success() {
-                        // Do not block further pushes during error handling.
-                        tokio::spawn(Self::report_erroneous_response(response));
+                        let should_log_error = last_error_log_timestamp
+                            .map_or(true, |timestamp| timestamp.elapsed() >= ERROR_LOG_INTERVAL);
+                        if should_log_error {
+                            // Do not block further pushes during error handling.
+                            tokio::spawn(Self::report_erroneous_response(
+                                endpoint.clone(),
+                                response,
+                            ));
+                            last_error_log_timestamp = Some(Instant::now());
+                            // ^ This timestamp is somewhat imprecise (we don't wait to handle the response),
+                            // but it seems fine for rate-limiting purposes.
+                        }
                     }
                 }
                 Err(err) => {
-                    tracing::error!(%err, "Error submitting metrics to Prometheus push gateway");
+                    let should_log_error = last_error_log_timestamp
+                        .map_or(true, |timestamp| timestamp.elapsed() >= ERROR_LOG_INTERVAL);
+                    if should_log_error {
+                        tracing::error!(
+                            %err,
+                            %endpoint,
+                            "Error submitting metrics to Prometheus push gateway"
+                        );
+                        last_error_log_timestamp = Some(Instant::now());
+                    }
                 }
             }
         }
     }
 
-    async fn report_erroneous_response(response: Response<Body>) {
+    async fn report_erroneous_response(endpoint: Uri, response: Response<Body>) {
         let status = response.status();
         let body = match body::to_bytes(response.into_body()).await {
             Ok(body) => body,
@@ -389,6 +413,7 @@ impl MetricsExporter {
                 tracing::error!(
                     %err,
                     %status,
+                    %endpoint,
                     "Failed reading erroneous response from Prometheus push gateway"
                 );
                 return;
@@ -407,6 +432,7 @@ impl MetricsExporter {
         tracing::warn!(
             %status,
             %body,
+            %endpoint,
             "Error pushing metrics to Prometheus push gateway"
         );
     }
@@ -453,6 +479,9 @@ doc_comment::doctest!("../README.md");
 mod tests {
     use hyper::body::Bytes;
     use tokio::sync::{mpsc, Mutex};
+    use tracing::subscriber::Subscriber;
+    use tracing_capture::{CaptureLayer, SharedStorage};
+    use tracing_subscriber::layer::SubscriberExt;
 
     use std::{
         net::Ipv4Addr,
@@ -592,11 +621,20 @@ mod tests {
                     .unwrap(),
                 Self::Error => Response::builder()
                     .status(StatusCode::SERVICE_UNAVAILABLE)
-                    .body(Body::empty())
+                    .body(Body::from(b"Mistake!".as_slice()))
                     .unwrap(),
                 Self::Panic => panic!("oops"),
             }
         }
+    }
+
+    fn tracing_subscriber(storage: &SharedStorage) -> impl Subscriber {
+        tracing_subscriber::fmt()
+            .pretty()
+            .with_max_level(tracing::Level::INFO)
+            .with_test_writer()
+            .finish()
+            .with(CaptureLayer::new(storage))
     }
 
     #[tokio::test]
@@ -604,6 +642,11 @@ mod tests {
         static REQUEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
         let _guard = TEST_MUTEX.lock().await;
+        let tracing_storage = SharedStorage::default();
+        let _subscriber_guard =
+            tracing::subscriber::set_default(tracing_subscriber(&tracing_storage));
+        // ^ **NB.** `set_default()` only works because tests use a single-threaded Tokio runtime
+
         let bind_address: SocketAddr = (Ipv4Addr::LOCALHOST, 0).into();
         let (req_sender, mut req_receiver) = mpsc::unbounded_channel();
 
@@ -647,5 +690,33 @@ mod tests {
             );
             assert_scraped_payload_is_valid(&request_body);
         }
+
+        assert_logs(&tracing_storage.lock());
+    }
+
+    fn assert_logs(tracing_storage: &tracing_capture::Storage) {
+        let warnings = tracing_storage.all_events().filter(|event| {
+            event.metadata().target() == env!("CARGO_CRATE_NAME")
+                && *event.metadata().level() <= tracing::Level::WARN
+        });
+        let warnings: Vec<_> = warnings.collect();
+        // Check that we don't spam the error messages.
+        assert_eq!(warnings.len(), 1);
+
+        // Check warning contents. We should log the first encountered error (i.e., "Service unavailable").
+        let warning: &tracing_capture::CapturedEvent = &warnings[0];
+        assert!(warning
+            .message()
+            .unwrap()
+            .contains("Error pushing metrics to Prometheus push gateway"));
+        assert_eq!(
+            warning["status"].as_debug_str().unwrap(),
+            StatusCode::SERVICE_UNAVAILABLE.to_string()
+        );
+        assert_eq!(warning["body"].as_debug_str().unwrap(), "Mistake!");
+        assert!(warning["endpoint"]
+            .as_debug_str()
+            .unwrap()
+            .starts_with("http://127.0.0.1:"));
     }
 }
