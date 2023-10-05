@@ -2,6 +2,9 @@
 
 use hyper::body::Bytes;
 use tokio::sync::{mpsc, Mutex};
+use tracing::subscriber::Subscriber;
+use tracing_capture::{CaptureLayer, SharedStorage};
+use tracing_subscriber::layer::SubscriberExt;
 
 use std::{
     net::Ipv4Addr,
@@ -141,11 +144,20 @@ impl MockServerBehavior {
                 .unwrap(),
             Self::Error => Response::builder()
                 .status(StatusCode::SERVICE_UNAVAILABLE)
-                .body(Body::empty())
+                .body(Body::from(b"Mistake!" as &[u8]))
                 .unwrap(),
             Self::Panic => panic!("oops"),
         }
     }
+}
+
+fn tracing_subscriber(storage: &SharedStorage) -> impl Subscriber {
+    tracing_subscriber::fmt()
+        .pretty()
+        .with_max_level(tracing::Level::INFO)
+        .with_test_writer()
+        .finish()
+        .with(CaptureLayer::new(storage))
 }
 
 #[tokio::test]
@@ -153,6 +165,10 @@ async fn using_push_gateway() {
     static REQUEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
     let _guard = TEST_MUTEX.lock().await;
+    let tracing_storage = SharedStorage::default();
+    let _subscriber_guard = tracing::subscriber::set_default(tracing_subscriber(&tracing_storage));
+    // ^ **NB.** `set_default()` only works because tests use a single-threaded Tokio runtime
+
     let bind_address: SocketAddr = (Ipv4Addr::LOCALHOST, 0).into();
     let (req_sender, mut req_receiver) = mpsc::unbounded_channel();
 
@@ -196,4 +212,35 @@ async fn using_push_gateway() {
         );
         assert_scraped_payload_is_valid(&request_body);
     }
+
+    assert_logs(&tracing_storage.lock());
+}
+
+fn assert_logs(tracing_storage: &tracing_capture::Storage) {
+    let warnings = tracing_storage.all_events().filter(|event| {
+        event
+            .metadata()
+            .target()
+            .starts_with(env!("CARGO_CRATE_NAME"))
+            && *event.metadata().level() <= tracing::Level::WARN
+    });
+    let warnings: Vec<_> = warnings.collect();
+    // Check that we don't spam the error messages.
+    assert_eq!(warnings.len(), 1);
+
+    // Check warning contents. We should log the first encountered error (i.e., "Service unavailable").
+    let warning: &tracing_capture::CapturedEvent = &warnings[0];
+    assert!(warning
+        .message()
+        .unwrap()
+        .contains("Error pushing metrics to Prometheus push gateway"));
+    assert_eq!(
+        warning["status"].as_debug_str().unwrap(),
+        StatusCode::SERVICE_UNAVAILABLE.to_string()
+    );
+    assert_eq!(warning["body"].as_debug_str().unwrap(), "Mistake!");
+    assert!(warning["endpoint"]
+        .as_debug_str()
+        .unwrap()
+        .starts_with("http://127.0.0.1:"));
 }
