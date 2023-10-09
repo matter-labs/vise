@@ -1,0 +1,11 @@
+error: #[derive(Metrics)] can only be placed on structs
+ --> tests/ui/metrics/unsupported_item.rs:4:1
+  |
+4 | enum Unsupported {}
+  | ^^^^^^^^^^^^^^^^^^^
+
+error: Only named fields are supported
+ --> tests/ui/metrics/unsupported_item.rs:7:23
+  |
+7 | struct UnsupportedToo(u8);
+  |                       ^^

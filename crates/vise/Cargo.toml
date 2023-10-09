@@ -24,4 +24,5 @@ assert_matches.workspace = true
 derive_more.workspace = true
 doc-comment.workspace = true
 rand.workspace = true
+trybuild.workspace = true
 version-sync.workspace = true

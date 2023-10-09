@@ -1,0 +1,5 @@
+error[E0080]: evaluation of constant value failed
+ --> tests/ui/metrics/bogus_metric_name.rs:6:5
+  |
+6 |     счетчик: Counter,
+  |     ^^^^^^^ the evaluated program panicked at 'name contains non-ASCII chars', $DIR/tests/ui/metrics/bogus_metric_name.rs:6:5

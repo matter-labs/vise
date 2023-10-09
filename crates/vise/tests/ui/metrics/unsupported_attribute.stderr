@@ -1,0 +1,5 @@
+error: Unsupported attribute; only `prefix` and `crate` attributes are supported (see `vise` crate docs for details)
+ --> tests/ui/metrics/unsupported_attribute.rs:4:11
+  |
+4 | #[metrics(what = 42)]
+  |           ^^^^

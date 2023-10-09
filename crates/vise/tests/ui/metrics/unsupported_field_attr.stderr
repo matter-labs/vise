@@ -1,0 +1,5 @@
+error: Unsupported attribute; only `buckets`, `unit` and `labels` attributes are supported (see `vise` crate docs for details)
+ --> tests/ui/metrics/unsupported_field_attr.rs:6:15
+  |
+6 |     #[metrics(what = 42)]
+  |               ^^^^
