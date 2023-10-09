@@ -2,24 +2,25 @@
 
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, Data, DeriveInput, Expr, Field, Ident, Lit, Path, Type};
+use syn::{
+    spanned::Spanned, Attribute, Data, DeriveInput, Expr, Field, Ident, Lit, LitStr, Path, Type,
+};
 
 use std::fmt;
 
-use crate::utils::{metrics_attribute, validate_name, ParseAttribute};
+use crate::utils::{metrics_attribute, ParseAttribute};
 
 /// Struct-level `#[metrics(..)]` attributes.
 #[derive(Default)]
 struct MetricsAttrs {
     cr: Option<Path>,
-    prefix: String,
+    prefix: Option<LitStr>,
 }
 
 impl fmt::Debug for MetricsAttrs {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("MetricsAttrs")
-            .field("prefix", &self.prefix)
             .finish_non_exhaustive()
     }
 }
@@ -32,9 +33,8 @@ impl ParseAttribute for MetricsAttrs {
                 attrs.cr = Some(meta.value()?.parse()?);
                 Ok(())
             } else if meta.path.is_ident("prefix") {
-                let prefix_str: syn::LitStr = meta.value()?.parse()?;
-                attrs.prefix = prefix_str.value();
-                validate_name(&attrs.prefix).map_err(|message| meta.error(message))
+                attrs.prefix = Some(meta.value()?.parse()?);
+                Ok(())
             } else {
                 Err(meta.error("unsupported attribute"))
             }
@@ -106,9 +106,6 @@ impl MetricsField {
             let message = "Only named fields are supported";
             syn::Error::new_spanned(raw, message)
         })?;
-        validate_name(&name.to_string())
-            .map_err(|message| syn::Error::new(name.span(), message))?;
-
         let ty = raw.ty.clone();
         let attrs = metrics_attribute(&raw.attrs)?;
 
@@ -268,11 +265,39 @@ impl MetricsImpl {
         }
     }
 
+    fn validate(&self) -> proc_macro2::TokenStream {
+        let cr = self.path_to_crate();
+
+        let prefix_assertion = self.attrs.prefix.as_ref().map(|prefix| {
+            quote_spanned!(prefix.span()=> #cr::validation::assert_metric_prefix(#prefix);)
+        });
+        let field_assertions = self.fields.iter().map(|field| {
+            let field_name = LitStr::new(&field.name.to_string(), field.name.span());
+            quote_spanned!(field_name.span()=> #cr::validation::assert_metric_name(#field_name))
+        });
+        let label_assertions = self.fields.iter().filter_map(|field| {
+            let labels = field.attrs.labels.as_ref()?;
+            Some(quote_spanned!(labels.span()=> #cr::validation::assert_label_names(&#labels)))
+        });
+
+        quote! {
+            const _: () = {
+                #prefix_assertion
+                #(#field_assertions;)*
+                #(#label_assertions;)*
+            };
+        }
+    }
+
     fn implement_metrics(&self) -> proc_macro2::TokenStream {
         let cr = self.path_to_crate();
         let name = &self.name;
-        let prefix = self.attrs.prefix.as_str();
-        let prefix = (!prefix.is_empty()).then_some(prefix);
+        let prefix = self
+            .attrs
+            .prefix
+            .as_ref()
+            .map_or_else(String::new, LitStr::value);
+        let prefix = (!prefix.is_empty()).then_some(prefix.as_str());
         let visit_fields = self.fields.iter().map(|field| field.visit(prefix));
         let describe_fields = self.fields.iter().map(|field| field.describe(prefix, &cr));
 
@@ -300,6 +325,7 @@ impl MetricsImpl {
 
     fn derive_traits(&self) -> proc_macro2::TokenStream {
         let name = &self.name;
+        let validation = self.validate();
         let initialization = self.initialize();
         let default_impl = quote! {
             impl core::default::Default for #name {
@@ -311,6 +337,7 @@ impl MetricsImpl {
         let metrics_impl = self.implement_metrics();
 
         quote! {
+            #validation
             #default_impl
             #metrics_impl
         }

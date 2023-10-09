@@ -3,10 +3,10 @@
 use std::{collections::HashSet, fmt};
 
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::{Attribute, Data, DeriveInput, Field, Fields, Ident, LitStr, Path, PathArguments, Type};
 
-use crate::utils::{metrics_attribute, validate_name, ParseAttribute};
+use crate::utils::{metrics_attribute, ParseAttribute};
 
 #[derive(Debug, Clone, Copy)]
 #[allow(clippy::enum_variant_names)]
@@ -105,7 +105,6 @@ impl ParseAttribute for EncodeLabelAttrs {
                 Ok(())
             } else if meta.path.is_ident("label") {
                 let label: LitStr = meta.value()?.parse()?;
-                validate_name(&label.value()).map_err(|message| meta.error(message))?;
                 attrs.label = Some(label);
                 Ok(())
             } else {
@@ -313,14 +312,11 @@ impl LabelField {
             syn::Error::new_spanned(raw, message)
         })?;
 
-        let this = Self {
+        Ok(Self {
             name,
             is_option: Self::detect_is_option(&raw.ty),
             attrs: metrics_attribute(&raw.attrs)?,
-        };
-        validate_name(&this.label_string())
-            .map_err(|message| syn::Error::new(this.name.span(), message))?;
-        Ok(this)
+        })
     }
 
     /// Strips the `r#` prefix from raw identifiers.
@@ -331,6 +327,11 @@ impl LabelField {
         } else {
             label
         }
+    }
+
+    fn label_literal(&self) -> LitStr {
+        let name = &self.name;
+        LitStr::new(&self.label_string(), name.span())
     }
 
     fn detect_is_option(ty: &Type) -> bool {
@@ -350,8 +351,7 @@ impl LabelField {
 
     fn encode(&self, encoding: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let name = &self.name;
-        let label = LitStr::new(&self.label_string(), name.span());
-
+        let label = self.label_literal();
         // Skip `Option`al fields by default if they are `None`.
         let default_skip: Path;
         let skip = if self.is_option && self.attrs.skip.is_none() {
@@ -412,6 +412,28 @@ impl EncodeLabelSetImpl {
         })
     }
 
+    fn validate(&self) -> proc_macro2::TokenStream {
+        let cr = if let Some(cr) = &self.attrs.cr {
+            quote!(#cr)
+        } else {
+            quote!(vise)
+        };
+
+        let label_assertions = if let Some(label) = &self.attrs.label {
+            quote_spanned!(label.span()=> #cr::validation::assert_label_name(#label);)
+        } else {
+            let fields = self.fields.as_ref().unwrap();
+            let field_assertions = fields.iter().map(|field| {
+                let label = field.label_literal();
+                quote_spanned!(label.span()=> #cr::validation::assert_label_name(#label))
+            });
+            quote!(#(#field_assertions;)*)
+        };
+        quote! {
+            const _: () = { #label_assertions };
+        }
+    }
+
     fn impl_set(&self) -> proc_macro2::TokenStream {
         let cr = if let Some(cr) = &self.attrs.cr {
             quote!(#cr)
@@ -420,36 +442,31 @@ impl EncodeLabelSetImpl {
         };
         let name = &self.name;
         let encoding = quote!(#cr::_reexports::encoding);
-
-        if let Some(label) = &self.attrs.label {
+        let encode_impl = if let Some(label) = &self.attrs.label {
             quote! {
-                impl #encoding::EncodeLabelSet for #name {
-                    fn encode(
-                        &self,
-                        mut encoder: #encoding::LabelSetEncoder<'_>,
-                    ) -> core::fmt::Result {
-                        let mut label_encoder = encoder.encode_label();
-                        let mut key_encoder = label_encoder.encode_label_key()?;
-                        #encoding::EncodeLabelKey::encode(&#label, &mut key_encoder)?;
-                        let mut value_encoder = key_encoder.encode_label_value()?;
-                        #encoding::EncodeLabelValue::encode(self, &mut value_encoder)?;
-                        value_encoder.finish()
-                    }
-                }
+                let mut label_encoder = encoder.encode_label();
+                let mut key_encoder = label_encoder.encode_label_key()?;
+                #encoding::EncodeLabelKey::encode(&#label, &mut key_encoder)?;
+                let mut value_encoder = key_encoder.encode_label_value()?;
+                #encoding::EncodeLabelValue::encode(self, &mut value_encoder)?;
+                value_encoder.finish()
             }
         } else {
             let fields = self.fields.as_ref().unwrap();
             let fields = fields.iter().map(|field| field.encode(&encoding));
-
             quote! {
-                impl #encoding::EncodeLabelSet for #name {
-                    fn encode(
-                        &self,
-                        mut encoder: #encoding::LabelSetEncoder<'_>,
-                    ) -> core::fmt::Result {
-                        #(#fields)*
-                        core::fmt::Result::Ok(())
-                    }
+                #(#fields)*
+                core::fmt::Result::Ok(())
+            }
+        };
+
+        quote! {
+            impl #encoding::EncodeLabelSet for #name {
+                fn encode(
+                    &self,
+                    mut encoder: #encoding::LabelSetEncoder<'_>,
+                ) -> core::fmt::Result {
+                    #encode_impl
                 }
             }
         }
@@ -471,7 +488,9 @@ pub(crate) fn impl_encode_label_set(input: TokenStream) -> TokenStream {
         Ok(trait_impl) => trait_impl,
         Err(err) => return err.into_compile_error().into(),
     };
-    trait_impl.impl_set().into()
+    let validations = trait_impl.validate();
+    let set_impl = trait_impl.impl_set();
+    quote!(#validations #set_impl).into()
 }
 
 #[cfg(test)]
