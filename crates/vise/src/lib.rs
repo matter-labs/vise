@@ -376,7 +376,7 @@ pub use crate::{
     format::Format,
     metrics::{Global, Metrics},
     registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
-    wrappers::{Family, Gauge, Histogram, LabeledFamily, LatencyObserver},
+    wrappers::{Family, Gauge, GaugeGuard, Histogram, LabeledFamily, LatencyObserver},
 };
 
 #[cfg(doctest)]
