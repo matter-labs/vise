@@ -17,6 +17,17 @@ struct MetricsAttrs {
     prefix: Option<LitStr>,
 }
 
+impl MetricsAttrs {
+    fn path_to_crate(&self, span: proc_macro2::Span) -> proc_macro2::TokenStream {
+        if let Some(cr) = &self.cr {
+            // Overriding the span for `cr` via `quote_spanned!` doesn't work.
+            quote!(#cr)
+        } else {
+            quote_spanned!(span=> vise)
+        }
+    }
+}
+
 impl fmt::Debug for MetricsAttrs {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -243,16 +254,8 @@ impl MetricsImpl {
         })
     }
 
-    fn path_to_crate(&self) -> proc_macro2::TokenStream {
-        if let Some(cr) = &self.attrs.cr {
-            quote!(#cr)
-        } else {
-            quote!(vise)
-        }
-    }
-
     fn initialize(&self) -> proc_macro2::TokenStream {
-        let cr = self.path_to_crate();
+        let cr = self.attrs.path_to_crate(proc_macro2::Span::call_site());
         let fields = self
             .fields
             .iter()
@@ -266,18 +269,22 @@ impl MetricsImpl {
     }
 
     fn validate(&self) -> proc_macro2::TokenStream {
-        let cr = self.path_to_crate();
-
         let prefix_assertion = self.attrs.prefix.as_ref().map(|prefix| {
-            quote_spanned!(prefix.span()=> #cr::validation::assert_metric_prefix(#prefix);)
+            let span = prefix.span();
+            let cr = self.attrs.path_to_crate(span);
+            quote_spanned!(span=> #cr::validation::assert_metric_prefix(#prefix);)
         });
         let field_assertions = self.fields.iter().map(|field| {
             let field_name = LitStr::new(&field.name.to_string(), field.name.span());
-            quote_spanned!(field_name.span()=> #cr::validation::assert_metric_name(#field_name))
+            let span = field_name.span();
+            let cr = self.attrs.path_to_crate(span);
+            quote_spanned!(span=> #cr::validation::assert_metric_name(#field_name))
         });
         let label_assertions = self.fields.iter().filter_map(|field| {
             let labels = field.attrs.labels.as_ref()?;
-            Some(quote_spanned!(labels.span()=> #cr::validation::assert_label_names(&#labels)))
+            let span = labels.span();
+            let cr = self.attrs.path_to_crate(span);
+            Some(quote_spanned!(span=> #cr::validation::assert_label_names(&#labels)))
         });
 
         quote! {
@@ -290,8 +297,8 @@ impl MetricsImpl {
     }
 
     fn implement_metrics(&self) -> proc_macro2::TokenStream {
-        let cr = self.path_to_crate();
         let name = &self.name;
+        let cr = self.attrs.path_to_crate(name.span());
         let prefix = self
             .attrs
             .prefix

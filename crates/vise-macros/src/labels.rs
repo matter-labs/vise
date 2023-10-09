@@ -1,10 +1,10 @@
 //! Derivation of `EncodeLabelValue` and `EncodeLabelSet` traits.
 
-use std::{collections::HashSet, fmt};
-
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{Attribute, Data, DeriveInput, Field, Fields, Ident, LitStr, Path, PathArguments, Type};
+
+use std::{collections::HashSet, fmt};
 
 use crate::utils::{metrics_attribute, ParseAttribute};
 
@@ -73,6 +73,17 @@ struct EncodeLabelAttrs {
     rename_all: Option<RenameRule>,
     format: Option<LitStr>,
     label: Option<LitStr>,
+}
+
+impl EncodeLabelAttrs {
+    fn path_to_crate(&self, span: proc_macro2::Span) -> proc_macro2::TokenStream {
+        if let Some(cr) = &self.cr {
+            // Overriding the span for `cr` via `quote_spanned!` doesn't work.
+            quote!(#cr)
+        } else {
+            quote_spanned!(span=> vise)
+        }
+    }
 }
 
 impl fmt::Debug for EncodeLabelAttrs {
@@ -225,11 +236,7 @@ impl EncodeLabelValueImpl {
     }
 
     fn impl_value(&self) -> proc_macro2::TokenStream {
-        let cr = if let Some(cr) = &self.attrs.cr {
-            quote!(#cr)
-        } else {
-            quote!(vise)
-        };
+        let cr = self.attrs.path_to_crate(proc_macro2::Span::call_site());
         let name = &self.name;
         let encoding = quote!(#cr::_reexports::encoding);
 
@@ -413,19 +420,17 @@ impl EncodeLabelSetImpl {
     }
 
     fn validate(&self) -> proc_macro2::TokenStream {
-        let cr = if let Some(cr) = &self.attrs.cr {
-            quote!(#cr)
-        } else {
-            quote!(vise)
-        };
-
         let label_assertions = if let Some(label) = &self.attrs.label {
-            quote_spanned!(label.span()=> #cr::validation::assert_label_name(#label);)
+            let span = label.span();
+            let cr = self.attrs.path_to_crate(span);
+            quote_spanned!(span=> #cr::validation::assert_label_name(#label);)
         } else {
             let fields = self.fields.as_ref().unwrap();
             let field_assertions = fields.iter().map(|field| {
                 let label = field.label_literal();
-                quote_spanned!(label.span()=> #cr::validation::assert_label_name(#label))
+                let span = label.span();
+                let cr = self.attrs.path_to_crate(span);
+                quote_spanned!(span=> #cr::validation::assert_label_name(#label))
             });
             quote!(#(#field_assertions;)*)
         };
@@ -435,11 +440,7 @@ impl EncodeLabelSetImpl {
     }
 
     fn impl_set(&self) -> proc_macro2::TokenStream {
-        let cr = if let Some(cr) = &self.attrs.cr {
-            quote!(#cr)
-        } else {
-            quote!(vise)
-        };
+        let cr = self.attrs.path_to_crate(proc_macro2::Span::call_site());
         let name = &self.name;
         let encoding = quote!(#cr::_reexports::encoding);
         let encode_impl = if let Some(label) = &self.attrs.label {

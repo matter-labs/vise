@@ -1,4 +1,4 @@
-//! Validation logic for label names.
+//! Validation logic for label and metric names.
 
 const fn is_valid_start_name_char(ch: u8) -> bool {
     ch == b'_' || ch.is_ascii_lowercase()
