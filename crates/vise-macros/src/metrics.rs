@@ -47,7 +47,10 @@ impl ParseAttribute for MetricsAttrs {
                 attrs.prefix = Some(meta.value()?.parse()?);
                 Ok(())
             } else {
-                Err(meta.error("unsupported attribute"))
+                Err(meta.error(
+                    "Unsupported attribute; only `prefix` and `crate` attributes are supported \
+                     (see `vise` crate docs for details)",
+                ))
             }
         })?;
         Ok(attrs)
@@ -86,7 +89,10 @@ impl ParseAttribute for MetricsFieldAttrs {
                 attrs.labels = Some(meta.value()?.parse()?);
                 Ok(())
             } else {
-                Err(meta.error("unsupported attribute"))
+                Err(meta.error(
+                    "Unsupported attribute; only `buckets`, `unit` and `labels` attributes are supported \
+                     (see `vise` crate docs for details)"
+                ))
             }
         })?;
         Ok(attrs)
@@ -160,15 +166,16 @@ impl MetricsField {
 
     fn initialize_default(&self, cr: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let name = &self.name;
-        let mut builder = quote!(#cr::MetricBuilder::new());
+        let span = self.ty.span();
+        let mut builder = quote_spanned!(span=> #cr::MetricBuilder::new());
         if let Some(buckets) = &self.attrs.buckets {
-            builder = quote!(#builder.with_buckets(#buckets));
+            builder = quote_spanned!(span=> #builder.with_buckets(#buckets));
         }
         if let Some(labels) = &self.attrs.labels {
-            builder = quote!(#builder.with_labels(#labels));
+            builder = quote_spanned!(span=> #builder.with_labels(#labels));
         }
 
-        quote_spanned! {name.span()=>
+        quote_spanned! {span=>
             #name: #cr::BuildMetric::build(#builder)
         }
     }
@@ -255,11 +262,10 @@ impl MetricsImpl {
     }
 
     fn initialize(&self) -> proc_macro2::TokenStream {
-        let cr = self.attrs.path_to_crate(proc_macro2::Span::call_site());
-        let fields = self
-            .fields
-            .iter()
-            .map(|field| field.initialize_default(&cr));
+        let fields = self.fields.iter().map(|field| {
+            let cr = self.attrs.path_to_crate(field.ty.span());
+            field.initialize_default(&cr)
+        });
 
         quote! {
             Self {
@@ -275,23 +281,32 @@ impl MetricsImpl {
             quote_spanned!(span=> #cr::validation::assert_metric_prefix(#prefix);)
         });
         let field_assertions = self.fields.iter().map(|field| {
+            let field_ty = &field.ty;
+            let span = field_ty.span();
+            let cr = self.attrs.path_to_crate(span);
+            let type_assertion = quote_spanned! {span=>
+                { struct _AssertIsMetric where #field_ty: #cr::BuildMetric; }
+            };
+
             let field_name = LitStr::new(&field.name.to_string(), field.name.span());
             let span = field_name.span();
             let cr = self.attrs.path_to_crate(span);
-            quote_spanned!(span=> #cr::validation::assert_metric_name(#field_name))
+            let name_assertion =
+                quote_spanned!(span=> #cr::validation::assert_metric_name(#field_name););
+            quote!(#type_assertion #name_assertion)
         });
         let label_assertions = self.fields.iter().filter_map(|field| {
             let labels = field.attrs.labels.as_ref()?;
             let span = labels.span();
             let cr = self.attrs.path_to_crate(span);
-            Some(quote_spanned!(span=> #cr::validation::assert_label_names(&#labels)))
+            Some(quote_spanned!(span=> #cr::validation::assert_label_names(&#labels);))
         });
 
         quote! {
             const _: () = {
                 #prefix_assertion
-                #(#field_assertions;)*
-                #(#label_assertions;)*
+                #(#field_assertions)*
+                #(#label_assertions)*
             };
         }
     }
