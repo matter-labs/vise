@@ -63,7 +63,7 @@
 //! Commonly, metrics can be registered by defining a `static`:
 //!
 //! ```
-//! # use vise::{Gauge, Global, Metrics, Registry};
+//! # use vise::{Gauge, Global, Metrics, MetricsCollection, Registry};
 //! #[derive(Debug, Clone, Metrics)]
 //! pub(crate) struct MyMetrics {
 //! #   pub gauge: Gauge<u64>,
@@ -74,7 +74,7 @@
 //! pub(crate) static MY_METRICS: Global<MyMetrics> = Global::new();
 //!
 //! // All registered metrics can be collected in a `Registry`:
-//! let registry = Registry::collect();
+//! let registry: Registry = MetricsCollection::default().collect();
 //! // Do something with the `registry`, e.g. create an exporter.
 //!
 //! fn metered_logic() {
@@ -314,7 +314,7 @@ pub use vise_macros::EncodeLabelSet;
 pub use vise_macros::Metrics;
 
 /// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
-/// into registries instantiated using [`Registry::collect()`].
+/// into registries instantiated using [`MetricsCollection`].
 ///
 /// This macro must be placed on a static item of a type implementing [`CollectToRegistry`].
 ///
@@ -375,7 +375,10 @@ pub use crate::{
     collector::{BeforeScrapeError, Collector},
     format::Format,
     metrics::{Global, Metrics},
-    registry::{CollectToRegistry, MetricsVisitor, Registry, METRICS_REGISTRATIONS},
+    registry::{
+        CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
+        METRICS_REGISTRATIONS,
+    },
     wrappers::{Family, Gauge, GaugeGuard, Histogram, LabeledFamily, LatencyObserver},
 };
 

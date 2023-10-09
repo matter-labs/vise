@@ -39,35 +39,11 @@ pub(crate) struct TestMetrics {
     histograms_with_buckets: LabeledFamily<&'static str, Histogram<Duration>>,
 }
 
-#[register]
-#[metrics(crate = crate)]
-static TEST_METRICS: Global<TestMetrics> = Global::new();
-
-#[test]
-fn metrics_registration() {
-    let registry = Registry::collect();
-    let descriptors = registry.descriptors();
-
-    assert!(descriptors.metric_count() > 5);
-    assert_eq!(descriptors.groups().len(), 2);
-    // ^ We have `TestMetrics` above and `TestMetrics` in the `collectors` module
-    assert!(descriptors
-        .groups()
-        .any(|group| group.module_path.contains("collector")));
-
-    let counter_descriptor = descriptors.metric("test_counter").unwrap();
-    assert_eq!(counter_descriptor.metric.help, "Test counter");
-
-    // Test metric registered via a `Collector` in the corresponding module tests.
-    let dynamic_gauge_descriptor = descriptors.metric("dynamic_gauge_bytes").unwrap();
-    assert_matches!(dynamic_gauge_descriptor.metric.unit, Some(Unit::Bytes));
-}
-
 #[test]
 fn testing_metrics() {
-    let test_metrics = &*TEST_METRICS;
+    let test_metrics = TestMetrics::default();
     let mut registry = Registry::empty();
-    registry.register_metrics(test_metrics);
+    registry.register_metrics(&test_metrics);
 
     test_metrics.counter.inc();
     assert_eq!(test_metrics.counter.get(), 1);
@@ -131,8 +107,8 @@ fn testing_metrics() {
     }
 
     let long_description_line = "# HELP test_family_of_histograms_seconds A family of histograms \
-            with a multiline description. Note that we use a type alias to properly propagate \
-            bucket configuration.";
+        with a multiline description. Note that we use a type alias to properly propagate \
+        bucket configuration.";
     assert!(lines.contains(&long_description_line));
 
     let histogram_family_lines = [
@@ -147,6 +123,93 @@ fn testing_metrics() {
             "text output doesn't contain line `{line}`"
         );
     }
+}
+
+#[test]
+fn metrics_registration() {
+    #[register]
+    #[metrics(crate = crate)]
+    static TEST_METRICS: Global<TestMetrics> = Global::new();
+
+    let registry = MetricsCollection::default()
+        .filter(|group| group.name == "TestMetrics")
+        .collect();
+    let descriptors = registry.descriptors();
+
+    assert!(descriptors.metric_count() > 5);
+    assert_eq!(descriptors.groups().len(), 2);
+    // ^ We have `TestMetrics` above and `TestMetrics` in the `collectors` module
+    assert!(descriptors
+        .groups()
+        .any(|group| group.module_path.contains("collector")));
+
+    let counter_descriptor = descriptors.metric("test_counter").unwrap();
+    assert_eq!(counter_descriptor.metric.help, "Test counter");
+
+    // Test metric registered via a `Collector` in the corresponding module tests.
+    let dynamic_gauge_descriptor = descriptors.metric("dynamic_gauge_bytes").unwrap();
+    assert_matches!(dynamic_gauge_descriptor.metric.unit, Some(Unit::Bytes));
+
+    TEST_METRICS.counter.inc_by(3);
+    TEST_METRICS.histogram.observe(Duration::from_millis(5));
+    assert_test_metrics(&registry);
+}
+
+fn assert_test_metrics(registry: &Registry) {
+    let mut buffer = String::new();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
+    let lines: Vec<_> = buffer.lines().collect();
+
+    let expected_lines = [
+        "# TYPE test_counter counter",
+        "# HELP test_counter Test counter.",
+        "test_counter_total 3",
+        "# TYPE test_histogram histogram",
+        "test_histogram_bucket{le=\"0.01\"} 1",
+    ];
+    for expected_line in expected_lines {
+        assert!(
+            lines.contains(&expected_line),
+            "Missing line `{expected_line}`: {lines:#?}"
+        );
+    }
+}
+
+#[test]
+fn lazy_metrics_registration() {
+    // Metric names clash with `TestMetrics` above, but because we use group filtering in both cases,
+    // this is fine.
+    #[derive(Debug, Metrics)]
+    #[metrics(crate = crate, prefix = "test")]
+    pub(crate) struct LazyMetrics {
+        /// Test counter.
+        counter: Counter,
+        /// Histogram with inline bucket specification.
+        #[metrics(buckets = &[0.001, 0.002, 0.005, 0.01, 0.1])]
+        histogram: Histogram<Duration>,
+    }
+
+    #[register]
+    #[metrics(crate = crate)]
+    static LAZY_METRICS: Global<LazyMetrics> = Global::new();
+
+    let registry = MetricsCollection::lazy()
+        .filter(|group| group.name == "LazyMetrics")
+        .collect();
+    let descriptors = registry.descriptors();
+
+    assert_eq!(descriptors.metric_count(), 2);
+    assert_eq!(descriptors.groups().len(), 1);
+    let counter_descriptor = descriptors.metric("test_counter").unwrap();
+    assert_eq!(counter_descriptor.metric.help, "Test counter");
+
+    let mut buffer = String::new();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
+    assert_eq!(buffer, "# EOF\n");
+
+    LAZY_METRICS.counter.inc_by(3);
+    LAZY_METRICS.histogram.observe(Duration::from_millis(5));
+    assert_test_metrics(&registry);
 }
 
 #[test]

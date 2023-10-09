@@ -23,7 +23,7 @@ use std::{
 mod tests;
 
 use crate::metrics::{Facade, EXPORTER_METRICS};
-use vise::{Format, Registry};
+use vise::{Format, MetricsCollection, Registry};
 
 #[derive(Clone)]
 struct MetricsExporterInner {
@@ -138,11 +138,11 @@ impl fmt::Debug for MetricsExporter<'_> {
     }
 }
 
-/// Creates an exporter based on [`Registry::collect()`] output (i.e., with all metrics registered
-/// by the app and libs it depends on).
+/// Creates an exporter based on [`MetricsCollection`]`::default().collect()` output (i.e., with all metrics
+/// registered by the app and libs it depends on).
 impl Default for MetricsExporter<'_> {
     fn default() -> Self {
-        Self::new(Registry::collect().into())
+        Self::new(MetricsCollection::default().collect().into())
     }
 }
 

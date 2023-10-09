@@ -50,7 +50,7 @@ fn init_legacy_exporter(builder: PrometheusBuilder) -> PrometheusBuilder {
 #[tokio::test]
 async fn legacy_and_modern_metrics_can_coexist() {
     let _guard = TEST_MUTEX.lock().await;
-    let exporter = MetricsExporter::new(Registry::collect().into());
+    let exporter = MetricsExporter::default();
     #[cfg(feature = "legacy")]
     let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
     report_metrics();
@@ -191,7 +191,7 @@ async fn using_push_gateway() {
     let local_addr = mock_server.local_addr();
     tokio::spawn(mock_server);
 
-    let exporter = MetricsExporter::new(Registry::collect().into());
+    let exporter = MetricsExporter::default();
     #[cfg(feature = "legacy")]
     let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
     report_metrics();

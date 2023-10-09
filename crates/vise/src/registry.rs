@@ -9,15 +9,11 @@ use prometheus_client::{
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    collector::Collector,
+    collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
     format::{Format, PrometheusWrapper},
-    Metrics,
+    Global, Metrics,
 };
-
-#[doc(hidden)] // only used by the proc macros
-#[distributed_slice]
-pub static METRICS_REGISTRATIONS: [fn(&mut Registry)] = [..];
 
 impl FullMetricDescriptor {
     fn format_for_panic(&self) -> String {
@@ -33,6 +29,7 @@ impl FullMetricDescriptor {
     }
 }
 
+/// Descriptors of all metrics in a registry.
 #[derive(Debug, Default)]
 pub struct RegisteredDescriptors {
     groups: Vec<&'static MetricGroupDescriptor>,
@@ -74,10 +71,80 @@ impl RegisteredDescriptors {
     }
 }
 
+/// Configures collection of [`register`](crate::register)ed metrics.
+///
+/// # Examples
+///
+/// See [`Registry`] docs for examples of usage.
+#[derive(Debug)]
+pub struct MetricsCollection<F = fn(&MetricGroupDescriptor) -> bool> {
+    is_lazy: bool,
+    filter_fn: F,
+}
+
+impl Default for MetricsCollection {
+    fn default() -> Self {
+        Self {
+            is_lazy: false,
+            filter_fn: |_| true,
+        }
+    }
+}
+
+impl MetricsCollection {
+    /// Specifies that metrics should be lazily exported.
+    ///
+    /// By default, [`Global`] metrics are eagerly collected into a [`Registry`]; i.e., metrics will get exported
+    /// even if they were never modified by the app / library logic. This is *usually* fine (e.g.,
+    /// this allows getting all metrics metadata on the first scrape), but sometimes you may want to
+    /// export only metrics touched by the app / library logic. E.g., you have a single app binary
+    /// that exposes different sets of metrics depending on configuration, and exporting all metrics
+    /// is confusing and/or unacceptably bloats exported data size.
+    ///
+    /// `lazy()` solves this issue. It will configure the created `Registry` so that `Global` metrics
+    /// are only exported after they are touched by the app / library logic. Beware that this includes
+    /// being touched by an eager `MetricsCollection` (only metrics actually included into the collection
+    /// are touched).
+    pub fn lazy() -> Self {
+        Self {
+            is_lazy: true,
+            ..Self::default()
+        }
+    }
+
+    /// Configures a filtering predicate for this collection. Only [`Metrics`] with a descriptor
+    /// satisfying this will be [collected](MetricsCollection::collect()).
+    pub fn filter<F>(self, filter_fn: F) -> MetricsCollection<F>
+    where
+        F: FnMut(&MetricGroupDescriptor) -> bool,
+    {
+        MetricsCollection {
+            is_lazy: self.is_lazy,
+            filter_fn,
+        }
+    }
+}
+
+impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
+    /// Creates a registry with all [`register`](crate::register)ed [`Global`] metrics
+    /// and [`Collector`]s. If a filtering predicate [was provided](MetricsCollection::filter()),
+    /// only metrics satisfying this function will be collected.
+    pub fn collect(mut self) -> Registry {
+        let mut registry = Registry::empty();
+        registry.is_lazy = self.is_lazy;
+        for metric in METRICS_REGISTRATIONS {
+            if (self.filter_fn)(metric.descriptor()) {
+                metric.collect_to_registry(&mut registry);
+            }
+        }
+        registry
+    }
+}
+
 /// Metrics registry.
 ///
 /// A registry collects [`Metrics`] and [`Collector`]s defined in an app and libs the app depends on.
-/// Then, these metrics can be scraped by calling [`Self::encode()`] or [`Self::encode_to_text()`].
+/// Then, these metrics can be scraped by calling [`Self::encode()`].
 ///
 /// # Collecting metrics
 ///
@@ -85,10 +152,10 @@ impl RegisteredDescriptors {
 /// and [`Self::register_collector()`]. However, this can become untenable for large apps
 /// with a complex dependency graph. As an alternative, you may use [`register`](crate::register) attributes
 /// to mark [`Metrics`] and [`Collector`]s that should be present in the registry, and then initialize the registry
-/// with [`Self::collect()`].
+/// with [`MetricsCollection`] methods.
 ///
 /// ```
-/// use vise::{Buckets, Global, Histogram, Metrics, Registry, Unit};
+/// use vise::{Buckets, Global, Histogram, Metrics, MetricsCollection, Registry, Unit};
 /// # use assert_matches::assert_matches;
 /// use std::time::Duration;
 ///
@@ -101,10 +168,10 @@ impl RegisteredDescriptors {
 /// }
 ///
 /// #[vise::register]
-/// // ^ Registers this instance for use with `Registry::collect()`
+/// // ^ Registers this instance for use with `MetricsCollection::collect()`
 /// pub(crate) static APP_METRICS: Global<AppMetrics> = Global::new();
 ///
-/// let registry = Registry::collect();
+/// let registry: Registry = MetricsCollection::default().collect();
 /// // Check that the registered metric is present
 /// let descriptor = registry
 ///     .descriptors()
@@ -114,10 +181,21 @@ impl RegisteredDescriptors {
 /// assert_matches!(descriptor.metric.unit, Some(Unit::Seconds));
 /// ```
 ///
+/// Registered metrics can be filtered. This is useful if you want to avoid exporting certain metrics
+/// under certain conditions.
+///
+/// ```
+/// # use vise::{MetricsCollection, Registry};
+/// let filtered_registry: Registry = MetricsCollection::default()
+///     .filter(|group| group.name == "AppMetrics")
+///     .collect();
+/// // Do something with `filtered_registry`...
+/// ```
+///
 /// `collect()` will panic if a metric is redefined:
 ///
 /// ```should_panic
-/// # use vise::{Collector, Global, Gauge, Metrics, Registry, Unit};
+/// # use vise::{Collector, Global, Gauge, Metrics, MetricsCollection, Unit};
 /// #[derive(Debug, Metrics)]
 /// pub(crate) struct AppMetrics {
 ///     #[metrics(unit = Unit::Bytes)]
@@ -132,12 +210,13 @@ impl RegisteredDescriptors {
 /// #[vise::register]
 /// pub(crate) static APP_COLLECTOR: Collector<AppMetrics> = Collector::new();
 ///
-/// let registry = Registry::collect(); // will panic
+/// let registry = MetricsCollection::default().collect(); // will panic
 /// ```
 #[derive(Debug)]
 pub struct Registry {
     descriptors: RegisteredDescriptors,
     inner: RegistryInner,
+    is_lazy: bool,
 }
 
 impl Registry {
@@ -146,17 +225,8 @@ impl Registry {
         Self {
             descriptors: RegisteredDescriptors::default(),
             inner: RegistryInner::default(),
+            is_lazy: false,
         }
-    }
-
-    /// Creates a registry with all [`Metrics`](crate::Metrics) implementations automatically injected.
-    // TODO: allow filtering metrics (by a descriptor predicate?)
-    pub fn collect() -> Self {
-        let mut this = Self::empty();
-        for metric_fn in METRICS_REGISTRATIONS {
-            (metric_fn)(&mut this);
-        }
-        this
     }
 
     /// Returns descriptors for all registered metrics.
@@ -169,6 +239,16 @@ impl Registry {
         self.descriptors.push(&M::DESCRIPTOR);
         let visitor = MetricsVisitor(MetricsVisitorInner::Registry(self));
         metrics.visit_metrics(visitor);
+    }
+
+    pub(crate) fn register_global_metrics<M: Metrics>(&mut self, metrics: &'static Global<M>) {
+        if self.is_lazy {
+            self.descriptors.push(&M::DESCRIPTOR);
+            let collector = LazyGlobalCollector::new(metrics);
+            self.inner.register_collector(Box::new(collector));
+        } else {
+            self.register_metrics::<M>(metrics);
+        }
     }
 
     /// Registers a [`Collector`].
@@ -235,8 +315,14 @@ impl<'a> MetricsVisitor<'a> {
 }
 
 /// Collects metrics from this type to registry. This is used by the [`register`](crate::register)
-/// macro to handle registration of [`Global`](crate::Global) metrics and [`Collector`]s.
+/// macro to handle registration of [`Global`] metrics and [`Collector`]s.
 pub trait CollectToRegistry: 'static + Send + Sync {
+    #[doc(hidden)] // implementation detail
+    fn descriptor(&self) -> &'static MetricGroupDescriptor;
     #[doc(hidden)] // implementation detail
     fn collect_to_registry(&'static self, registry: &mut Registry);
 }
+
+#[doc(hidden)] // only used by the proc macros
+#[distributed_slice]
+pub static METRICS_REGISTRATIONS: [&'static dyn CollectToRegistry] = [..];

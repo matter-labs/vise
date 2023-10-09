@@ -55,9 +55,7 @@ fn register_static(input: &mut ItemStatic) -> syn::Result<proc_macro2::TokenStre
         const _: () = {
             #[#cr::_reexports::linkme::distributed_slice(#cr::METRICS_REGISTRATIONS)]
             #[linkme(crate = #cr::_reexports::linkme)]
-            fn __register(registry: &mut #cr::Registry) {
-                #cr::CollectToRegistry::collect_to_registry(&#name, registry);
-            }
+            static __REGISTRATION: &'static dyn #cr::CollectToRegistry = &#name;
         };
     })
 }
