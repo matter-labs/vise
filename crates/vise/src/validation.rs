@@ -30,6 +30,7 @@ const fn validate_name(name: &str) -> Result<(), &'static str> {
 }
 
 /// Checks that a label name is valid.
+#[track_caller]
 pub const fn assert_label_name(name: &str) {
     if let Err(err) = validate_name(name) {
         panic!("{}", err);
@@ -37,6 +38,7 @@ pub const fn assert_label_name(name: &str) {
 }
 
 /// Same as [`assert_label_name()`], but for multiple names.
+#[track_caller]
 pub const fn assert_label_names(names: &[&str]) {
     let mut idx = 0;
     while idx < names.len() {
@@ -46,6 +48,7 @@ pub const fn assert_label_names(names: &[&str]) {
 }
 
 /// Checks that a metric name is valid.
+#[track_caller]
 pub const fn assert_metric_name(name: &str) {
     if let Err(err) = validate_name(name) {
         panic!("{}", err);
@@ -53,6 +56,7 @@ pub const fn assert_metric_name(name: &str) {
 }
 
 /// Checks that a metric prefix is valid.
+#[track_caller]
 pub const fn assert_metric_prefix(name: &str) {
     if let Err(err) = validate_name(name) {
         panic!("{}", err);
