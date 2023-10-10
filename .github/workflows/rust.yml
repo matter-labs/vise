@@ -43,7 +43,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          components: rustfmt, clippy
+          components: rustfmt, clippy, rust-src
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.3
 
