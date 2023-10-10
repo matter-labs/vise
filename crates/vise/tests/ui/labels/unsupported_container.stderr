@@ -1,0 +1,20 @@
+error: Non-singleton `EncodeLabelSet` can only be derived on structs
+ --> tests/ui/labels/unsupported_container.rs:4:1
+  |
+4 | enum Unsupported {}
+  | ^^^^^^^^^^^^^^^^^^^
+
+error: Encoded fields must be named
+ --> tests/ui/labels/unsupported_container.rs:7:23
+  |
+7 | struct UnsupportedToo(u8);
+  |                       ^^
+
+error: `rename_all` attribute can only be placed on enums
+  --> tests/ui/labels/unsupported_container.rs:10:1
+   |
+10 | / #[metrics(rename_all = "snake_case")]
+11 | | struct UnsupportedForValue {
+12 | |     test: u8,
+13 | | }
+   | |_^

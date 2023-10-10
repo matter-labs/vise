@@ -1,0 +1,6 @@
+error: Label value `test` is redefined
+ --> tests/ui/labels/duplicate_label_value.rs:7:5
+  |
+7 | /     #[metrics(name = "test")]
+8 | |     Other,
+  | |_________^

@@ -1,0 +1,5 @@
+error: Unsupported attribute; only `crate`, `rename_all`, `format` and `label` are supported (see `vise` crate docs for details)
+ --> tests/ui/labels/unsupported_attribute.rs:4:11
+  |
+4 | #[metrics(what = 42)]
+  |           ^^^^

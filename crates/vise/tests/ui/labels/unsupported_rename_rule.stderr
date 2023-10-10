@@ -1,0 +1,5 @@
+error: Invalid case specified; should be one of: lowercase, UPPERCASE, camelCase, snake_case, SCREAMING_SNAKE_CASE, kebab-case, SCREAMING-KEBAB-CASE
+ --> tests/ui/labels/unsupported_rename_rule.rs:4:24
+  |
+4 | #[metrics(rename_all = "what")]
+  |                        ^^^^^^

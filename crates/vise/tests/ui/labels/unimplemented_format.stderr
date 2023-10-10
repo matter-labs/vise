@@ -1,0 +1,14 @@
+error[E0277]: `Label` doesn't implement `std::fmt::Display`
+ --> tests/ui/labels/unimplemented_format.rs:4:20
+  |
+4 | #[metrics(format = "{}")]
+  |                    ^^^^ `Label` cannot be formatted with the default formatter
+  |
+ ::: $RUST/core/src/macros/mod.rs
+  |
+  |         $dst.write_fmt($crate::format_args!($($arg)*))
+  |                        ------------------------------ in this macro invocation
+  |
+  = help: the trait `std::fmt::Display` is not implemented for `Label`
+  = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+  = note: this error originates in the macro `$crate::format_args` (in Nightly builds, run with -Z macro-backtrace for more info)

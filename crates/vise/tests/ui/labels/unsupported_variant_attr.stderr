@@ -1,0 +1,5 @@
+error: Unsupported attribute; only `name` is supported (see `vise` crate docs for details)
+ --> tests/ui/labels/unsupported_variant_attr.rs:7:15
+  |
+7 |     #[metrics(rename = "_")]
+  |               ^^^^^^
