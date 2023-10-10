@@ -119,7 +119,10 @@ impl ParseAttribute for EncodeLabelAttrs {
                 attrs.label = Some(label);
                 Ok(())
             } else {
-                Err(meta.error("unsupported attribute"))
+                Err(meta.error(
+                    "Unsupported attribute; only `crate`, `rename_all`, `format` and `label` \
+                     are supported (see `vise` crate docs for details)",
+                ))
             }
         })?;
         Ok(attrs)
@@ -162,7 +165,10 @@ impl ParseAttribute for EnumVariantAttrs {
                 attrs.name = Some(meta.value()?.parse()?);
                 Ok(())
             } else {
-                Err(meta.error("unsupported attribute"))
+                Err(meta.error(
+                    "Unsupported attribute; only `name` is supported (see `vise` crate docs \
+                     for details)",
+                ))
             }
         })?;
         Ok(attrs)
@@ -257,7 +263,7 @@ impl EncodeLabelValueImpl {
                 &format_lit
             };
 
-            quote! {
+            quote_spanned! {format.span()=>
                 use core::fmt::Write as _;
                 core::write!(encoder, #format, self)
             }
@@ -358,19 +364,18 @@ impl LabelField {
 
     fn encode(&self, encoding: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let name = &self.name;
+        let span = name.span();
         let label = self.label_literal();
         // Skip `Option`al fields by default if they are `None`.
         let default_skip: Path;
         let skip = if self.is_option && self.attrs.skip.is_none() {
-            default_skip = syn::parse_quote_spanned! {name.span()=>
-                core::option::Option::is_none
-            };
+            default_skip = syn::parse_quote_spanned!(span=> core::option::Option::is_none);
             Some(&default_skip)
         } else {
             self.attrs.skip.as_ref()
         };
 
-        let encode_inner = quote! {
+        let encode_inner = quote_spanned! {span=>
             let mut label_encoder = encoder.encode_label();
             let mut key_encoder = label_encoder.encode_label_key()?;
             #encoding::EncodeLabelKey::encode(&#label, &mut key_encoder)?;
@@ -379,7 +384,9 @@ impl LabelField {
             value_encoder.finish()?;
         };
         if let Some(skip) = skip {
-            quote! {
+            quote_spanned! {span=>
+                #[allow(clippy::needless_borrow)]
+                // ^ Allows for common cases, such as applying `str::is_empty` for a `&str` field
                 if !#skip(&self.#name) {
                     #encode_inner
                 }
@@ -440,11 +447,10 @@ impl EncodeLabelSetImpl {
     }
 
     fn impl_set(&self) -> proc_macro2::TokenStream {
-        let cr = self.attrs.path_to_crate(proc_macro2::Span::call_site());
-        let name = &self.name;
-        let encoding = quote!(#cr::_reexports::encoding);
         let encode_impl = if let Some(label) = &self.attrs.label {
-            quote! {
+            let cr = self.attrs.path_to_crate(label.span());
+            let encoding = quote!(#cr::_reexports::encoding);
+            quote_spanned! {label.span()=>
                 let mut label_encoder = encoder.encode_label();
                 let mut key_encoder = label_encoder.encode_label_key()?;
                 #encoding::EncodeLabelKey::encode(&#label, &mut key_encoder)?;
@@ -454,13 +460,20 @@ impl EncodeLabelSetImpl {
             }
         } else {
             let fields = self.fields.as_ref().unwrap();
-            let fields = fields.iter().map(|field| field.encode(&encoding));
+            let fields = fields.iter().map(|field| {
+                let cr = self.attrs.path_to_crate(field.name.span());
+                let encoding = quote!(#cr::_reexports::encoding);
+                field.encode(&encoding)
+            });
             quote! {
                 #(#fields)*
                 core::fmt::Result::Ok(())
             }
         };
 
+        let name = &self.name;
+        let cr = self.attrs.path_to_crate(proc_macro2::Span::call_site());
+        let encoding = quote!(#cr::_reexports::encoding);
         quote! {
             impl #encoding::EncodeLabelSet for #name {
                 fn encode(
