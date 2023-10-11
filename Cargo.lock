@@ -125,6 +125,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "compile-fmt"
+version = "0.1.0"
+source = "git+https://github.com/slowli/compile-fmt.git?rev=c6a41c846c9a6f70cdba4b44c9f3922242ffcf12#c6a41c846c9a6f70cdba4b44c9f3922242ffcf12"
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1646,6 +1651,7 @@ name = "vise"
 version = "0.1.0"
 dependencies = [
  "assert_matches",
+ "compile-fmt",
  "derive_more",
  "doc-comment",
  "elsa",
