@@ -1,0 +1,5 @@
+error[E0080]: evaluation of constant value failed
+ --> tests/ui/labels/bogus_label_name_in_metrics_attr.rs:5:24
+  |
+5 |     #[metrics(labels = ["methoD"])]
+  |                        ^^^^^^^^^^ the evaluated program panicked at 'Label name `methoD` is invalid: name contains a disallowed char 'D' at position 5; allowed chars are [_a-z0-9]', $DIR/tests/ui/labels/bogus_label_name_in_metrics_attr.rs:5:24
