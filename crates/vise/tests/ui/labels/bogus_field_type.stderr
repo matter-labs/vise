@@ -1,0 +1,16 @@
+error[E0277]: the trait bound `Vec<String>: EncodeLabelValue` is not satisfied
+ --> tests/ui/labels/bogus_field_type.rs:5:5
+  |
+5 |     method: Vec<String>,
+  |     ^^^^^^ the trait `EncodeLabelValue` is not implemented for `Vec<String>`
+  |
+  = help: the following other types implement trait `EncodeLabelValue`:
+            isize
+            i8
+            i16
+            i32
+            i64
+            i128
+            usize
+            u8
+          and $N others

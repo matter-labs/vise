@@ -1,0 +1,5 @@
+error[E0080]: evaluation of constant value failed
+ --> tests/ui/labels/bogus_label_name_in_attr.rs:4:19
+  |
+4 | #[metrics(label = "what?", rename_all = "snake_case")]
+  |                   ^^^^^^^ the evaluated program panicked at 'Label name `what?` is invalid: name contains a disallowed char '?' at position 4; allowed chars are [_a-z0-9]', $DIR/tests/ui/labels/bogus_label_name_in_attr.rs:4:19

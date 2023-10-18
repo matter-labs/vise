@@ -14,6 +14,7 @@ categories.workspace = true
 [dependencies]
 vise-macros = { version = "0.1.0", path = "../vise-macros" }
 
+compile-fmt.workspace = true
 elsa.workspace = true
 linkme.workspace = true
 once_cell.workspace = true
@@ -24,4 +25,5 @@ assert_matches.workspace = true
 derive_more.workspace = true
 doc-comment.workspace = true
 rand.workspace = true
+trybuild.workspace = true
 version-sync.workspace = true

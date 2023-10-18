@@ -367,6 +367,8 @@ mod registry;
 #[cfg(test)]
 mod tests;
 pub mod traits;
+#[doc(hidden)]
+pub mod validation;
 mod wrappers;
 
 pub use crate::{

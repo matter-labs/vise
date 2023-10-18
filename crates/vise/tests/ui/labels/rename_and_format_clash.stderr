@@ -1,0 +1,5 @@
+error: `rename_all` and `format` attributes cannot be specified together
+ --> tests/ui/labels/rename_and_format_clash.rs:4:47
+  |
+4 | #[metrics(rename_all = "snake_case", format = "{:?}")]
+  |                                               ^^^^^^

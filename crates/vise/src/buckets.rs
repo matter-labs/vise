@@ -1,3 +1,5 @@
+use compile_fmt::{compile_assert, fmt};
+
 use std::{cmp, iter, mem, ops};
 
 #[derive(Debug, Clone, Copy)]
@@ -46,15 +48,17 @@ impl Buckets {
     /// # Panics
     ///
     /// Panics if `values` are empty or are not monotonically increasing.
+    #[track_caller]
     pub const fn values(values: &'static [f64]) -> Self {
         assert!(!values.is_empty(), "Values cannot be empty");
 
         let mut i = 1;
         let mut prev_value = values[0];
         while i < values.len() {
-            assert!(
+            compile_assert!(
                 is_f64_greater(values[i], prev_value),
-                "Values must be monotonically increasing"
+                "Values must be monotonically increasing; offending value has index ",
+                i => fmt::<usize>()
             );
             prev_value = values[i];
             i += 1;

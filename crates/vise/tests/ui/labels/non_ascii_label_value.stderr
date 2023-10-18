@@ -1,0 +1,5 @@
+error: Variant name must consist of ASCII chars
+ --> tests/ui/labels/non_ascii_label_value.rs:6:5
+  |
+6 |     Хорошо,
+  |     ^^^^^^

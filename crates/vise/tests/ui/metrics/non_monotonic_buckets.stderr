@@ -1,0 +1,5 @@
+error[E0080]: evaluation of constant value failed
+ --> tests/ui/metrics/non_monotonic_buckets.rs:3:32
+  |
+3 | const BOGUS_BUCKETS: Buckets = Buckets::values(&[0.1, 0.2, 0.1, 0.5]);
+  |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the evaluated program panicked at 'Values must be monotonically increasing; offending value has index 2', $DIR/tests/ui/metrics/non_monotonic_buckets.rs:3:32

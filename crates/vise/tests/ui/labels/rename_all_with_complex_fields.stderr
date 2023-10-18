@@ -1,0 +1,5 @@
+error: To use `rename_all` attribute, all enum variants must be plain (have no fields)
+ --> tests/ui/labels/rename_all_with_complex_fields.rs:7:5
+  |
+7 |     Value(u8),
+  |     ^^^^^^^^^

@@ -1,0 +1,8 @@
+error[E0271]: type mismatch resolving `<Histogram<u64> as BuildMetric>::Builder == MetricBuilder`
+ --> tests/ui/metrics/missing_buckets.rs:6:16
+  |
+6 |     histogram: Histogram<u64>,
+  |                ^^^^^^^^^ expected `MetricBuilder<Buckets>`, found `MetricBuilder`
+  |
+  = note: expected struct `MetricBuilder<Buckets>`
+             found struct `MetricBuilder<()>`
