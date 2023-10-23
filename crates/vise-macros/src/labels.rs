@@ -2,7 +2,9 @@
 
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, Data, DeriveInput, Field, Fields, Ident, LitStr, Path, PathArguments, Type};
+use syn::{
+    Attribute, Data, DeriveInput, Field, Fields, Generics, Ident, LitStr, Path, PathArguments, Type,
+};
 
 use std::{collections::HashSet, fmt};
 
@@ -184,14 +186,7 @@ struct EncodeLabelValueImpl {
 
 impl EncodeLabelValueImpl {
     fn new(raw: &DeriveInput) -> syn::Result<Self> {
-        let attrs: EncodeLabelAttrs = metrics_attribute(&raw.attrs)?;
-        if let Some(format) = &attrs.format {
-            if attrs.rename_all.is_some() {
-                let message = "`rename_all` and `format` attributes cannot be specified together";
-                return Err(syn::Error::new(format.span(), message));
-            }
-        }
-
+        let attrs = Self::parse_attrs(raw, "EncodeLabelValue")?;
         let enum_variants = attrs
             .rename_all
             .map(|case| Self::extract_enum_variants(raw, case))
@@ -202,6 +197,28 @@ impl EncodeLabelValueImpl {
             enum_variants,
             name: raw.ident.clone(),
         })
+    }
+
+    fn parse_attrs(raw: &DeriveInput, derived_macro: &str) -> syn::Result<EncodeLabelAttrs> {
+        Self::ensure_no_generics(&raw.generics, derived_macro)?;
+
+        let attrs: EncodeLabelAttrs = metrics_attribute(&raw.attrs)?;
+        if let Some(format) = &attrs.format {
+            if attrs.rename_all.is_some() {
+                let message = "`rename_all` and `format` attributes cannot be specified together";
+                return Err(syn::Error::new(format.span(), message));
+            }
+        }
+        Ok(attrs)
+    }
+
+    fn ensure_no_generics(generics: &Generics, derived_macro: &str) -> syn::Result<()> {
+        if generics.params.is_empty() {
+            Ok(())
+        } else {
+            let message = format!("Generics are not supported for `derive({derived_macro})` macro");
+            Err(syn::Error::new_spanned(generics, message))
+        }
     }
 
     fn extract_enum_variants(raw: &DeriveInput, case: RenameRule) -> syn::Result<Vec<EnumVariant>> {
@@ -406,7 +423,8 @@ struct EncodeLabelSetImpl {
 
 impl EncodeLabelSetImpl {
     fn new(raw: &DeriveInput) -> syn::Result<Self> {
-        let EncodeLabelValueImpl { attrs, name, .. } = EncodeLabelValueImpl::new(raw)?;
+        let attrs = EncodeLabelValueImpl::parse_attrs(raw, "EncodeLabelSet")?;
+        let name = raw.ident.clone();
 
         let fields = if attrs.label.is_some() {
             None

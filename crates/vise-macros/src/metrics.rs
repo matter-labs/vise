@@ -3,7 +3,8 @@
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{
-    spanned::Spanned, Attribute, Data, DeriveInput, Expr, Field, Ident, Lit, LitStr, Path, Type,
+    spanned::Spanned, Attribute, Data, DeriveInput, Expr, Field, Generics, Ident, Lit, LitStr,
+    Path, Type,
 };
 
 use std::fmt;
@@ -245,6 +246,7 @@ struct MetricsImpl {
 
 impl MetricsImpl {
     fn new(input: &DeriveInput) -> syn::Result<Self> {
+        Self::ensure_no_generics(&input.generics)?;
         let Data::Struct(data) = &input.data else {
             let message = "#[derive(Metrics)] can only be placed on structs";
             return Err(syn::Error::new_spanned(input, message));
@@ -259,6 +261,15 @@ impl MetricsImpl {
             name,
             fields,
         })
+    }
+
+    fn ensure_no_generics(generics: &Generics) -> syn::Result<()> {
+        if generics.params.is_empty() {
+            Ok(())
+        } else {
+            let message = "Generics are not supported for `derive(Metrics)` macro";
+            Err(syn::Error::new_spanned(generics, message))
+        }
     }
 
     fn initialize(&self) -> proc_macro2::TokenStream {
