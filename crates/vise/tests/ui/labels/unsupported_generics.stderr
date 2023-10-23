@@ -1,0 +1,17 @@
+error: Generics are not supported for `derive(EncodeLabelValue)` macro
+ --> tests/ui/labels/unsupported_generics.rs:4:27
+  |
+4 | struct UnsupportedLifetime<'a> {
+  |                           ^^^^
+
+error: Generics are not supported for `derive(EncodeLabelValue)` macro
+ --> tests/ui/labels/unsupported_generics.rs:9:29
+  |
+9 | struct UnsupportedConstParam<const N: usize> {
+  |                             ^^^^^^^^^^^^^^^^
+
+error: Generics are not supported for `derive(EncodeLabelValue)` macro
+  --> tests/ui/labels/unsupported_generics.rs:14:28
+   |
+14 | struct UnsupportedTypeParam<T> {
+   |                            ^^^
