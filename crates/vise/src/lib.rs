@@ -124,6 +124,7 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 
 /// Derives the [`EncodeLabelValue`] trait for a type, which encodes a metric label value.
 ///
+/// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
 /// The macro can be configured using `#[metrics()]` attributes.
 ///
 /// # Container attributes
@@ -171,7 +172,7 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 ///
 /// # Examples
 ///
-///  ## Default format
+/// ## Default format
 ///
 /// Label value using the default `Display` formatting; note that `Display` itself is derived.
 ///
@@ -213,6 +214,7 @@ pub use vise_macros::EncodeLabelValue;
 
 /// Derives the [`EncodeLabelSet`] trait for a type, which encodes a set of metric labels.
 ///
+/// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
 /// The macro can be configured using `#[metrics()]` attributes.
 ///
 /// # Container attributes
@@ -272,8 +274,9 @@ pub use vise_macros::EncodeLabelSet;
 
 /// Derives the [`Metrics`](trait@Metrics) trait for a type.
 ///
-/// This macro must be placed on a struct with named fields. Each field will be registered as metric
-/// or a family of metrics. The macro can be configured using `#[metrics()]` attributes.
+/// This macro must be placed on a struct with named fields and with no generics (lifetimes, type params
+/// or const params). Each field will be registered as metric or a family of metrics.
+/// The macro can be configured using `#[metrics()]` attributes.
 ///
 /// # Container attributes
 ///

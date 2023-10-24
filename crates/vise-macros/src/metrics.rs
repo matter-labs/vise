@@ -8,7 +8,7 @@ use syn::{
 
 use std::fmt;
 
-use crate::utils::{metrics_attribute, ParseAttribute};
+use crate::utils::{ensure_no_generics, metrics_attribute, ParseAttribute};
 
 /// Struct-level `#[metrics(..)]` attributes.
 #[derive(Default)]
@@ -245,6 +245,7 @@ struct MetricsImpl {
 
 impl MetricsImpl {
     fn new(input: &DeriveInput) -> syn::Result<Self> {
+        ensure_no_generics(&input.generics, "Metrics")?;
         let Data::Struct(data) = &input.data else {
             let message = "#[derive(Metrics)] can only be placed on structs";
             return Err(syn::Error::new_spanned(input, message));
