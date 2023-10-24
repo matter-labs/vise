@@ -1,6 +1,6 @@
 //! Utils shared among multiple derive macros.
 
-use syn::Attribute;
+use syn::{Attribute, Generics};
 
 pub(crate) trait ParseAttribute: Sized {
     fn parse(raw: &Attribute) -> syn::Result<Self>;
@@ -14,4 +14,13 @@ where
         .iter()
         .find(|attr| attr.meta.path().is_ident("metrics"));
     attrs.map_or_else(|| Ok(T::default()), T::parse)
+}
+
+pub(crate) fn ensure_no_generics(generics: &Generics, derived_macro: &str) -> syn::Result<()> {
+    if generics.params.is_empty() {
+        Ok(())
+    } else {
+        let message = format!("Generics are not supported for `derive({derived_macro})` macro");
+        Err(syn::Error::new_spanned(generics, message))
+    }
 }

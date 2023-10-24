@@ -2,13 +2,11 @@
 
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
-use syn::{
-    Attribute, Data, DeriveInput, Field, Fields, Generics, Ident, LitStr, Path, PathArguments, Type,
-};
+use syn::{Attribute, Data, DeriveInput, Field, Fields, Ident, LitStr, Path, PathArguments, Type};
 
 use std::{collections::HashSet, fmt};
 
-use crate::utils::{metrics_attribute, ParseAttribute};
+use crate::utils::{ensure_no_generics, metrics_attribute, ParseAttribute};
 
 #[derive(Debug, Clone, Copy)]
 #[allow(clippy::enum_variant_names)]
@@ -200,7 +198,7 @@ impl EncodeLabelValueImpl {
     }
 
     fn parse_attrs(raw: &DeriveInput, derived_macro: &str) -> syn::Result<EncodeLabelAttrs> {
-        Self::ensure_no_generics(&raw.generics, derived_macro)?;
+        ensure_no_generics(&raw.generics, derived_macro)?;
 
         let attrs: EncodeLabelAttrs = metrics_attribute(&raw.attrs)?;
         if let Some(format) = &attrs.format {
@@ -210,15 +208,6 @@ impl EncodeLabelValueImpl {
             }
         }
         Ok(attrs)
-    }
-
-    fn ensure_no_generics(generics: &Generics, derived_macro: &str) -> syn::Result<()> {
-        if generics.params.is_empty() {
-            Ok(())
-        } else {
-            let message = format!("Generics are not supported for `derive({derived_macro})` macro");
-            Err(syn::Error::new_spanned(generics, message))
-        }
     }
 
     fn extract_enum_variants(raw: &DeriveInput, case: RenameRule) -> syn::Result<Vec<EnumVariant>> {
