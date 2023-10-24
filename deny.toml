@@ -60,3 +60,11 @@ skip-tree = [
   # Old version used by `metrics`
   { name = "indexmap", version = "^1" },
 ]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+  # Temporary git dependency; to be replaced with a published version
+  "https://github.com/slowli/compile-fmt.git",
+]
