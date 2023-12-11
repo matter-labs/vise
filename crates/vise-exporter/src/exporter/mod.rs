@@ -296,11 +296,12 @@ impl<'a> MetricsExporter<'a> {
         let mut shutdown = self.shutdown_future;
         let mut last_error_log_timestamp = None::<Instant>;
         loop {
+            let mut shutdown_requested = false;
             if tokio::time::timeout(interval, &mut shutdown).await.is_ok() {
                 tracing::info!(
                     "Stop signal received, Prometheus metrics exporter is shutting down"
                 );
-                break;
+                shutdown_requested = true;
             }
 
             let request = Request::builder()
@@ -336,6 +337,9 @@ impl<'a> MetricsExporter<'a> {
                         last_error_log_timestamp = Some(Instant::now());
                     }
                 }
+            }
+            if shutdown_requested {
+                break;
             }
         }
     }
