@@ -111,7 +111,7 @@ async fn main() {
     };
 
     let bind_address = args
-        .get(0)
+        .first()
         .expect("Bind address must be provided as first command-line arg");
     let bind_address = bind_address.parse().expect("Bind address is invalid");
 
