@@ -20,7 +20,7 @@ categories = ["development-tools"]
 [workspace.dependencies]
 anyhow = "1.0"
 assert_matches = "1.5.0"
-compile-fmt = { version = "0.1.0", git = "https://github.com/slowli/compile-fmt.git", rev = "c6a41c846c9a6f70cdba4b44c9f3922242ffcf12" }
+compile-fmt = "0.1.0"
 derive_more = "0.99.17"
 doc-comment = "0.3.3"
 elsa = "1.9.0"

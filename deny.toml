@@ -50,8 +50,6 @@ skip = [
   # Old `syn` version required by `derive_more`. Since it's a proc macro dep required
   # from a dev dependency, having a duplicate version is sort of OK.
   { name = "syn", version = "^1" },
-  # Old version required by `hyper`. No fix available ATM.
-  { name = "socket2", version = "^0.4" },
   # Old version used by several crates. Largely a codegen dep, so using multiple versions shouldn't
   # be very problematic.
   { name = "bitflags", version = "^1" },
@@ -64,7 +62,3 @@ skip-tree = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = [
-  # Temporary git dependency; to be replaced with a published version
-  "https://github.com/slowli/compile-fmt.git",
-]
