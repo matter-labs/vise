@@ -34,13 +34,23 @@ struct MetricsExporterInner {
 }
 
 impl MetricsExporterInner {
-    fn render_body(&self) -> Body {
+    async fn render_body(&self) -> Body {
         let mut buffer = self.scrape_legacy_metrics();
 
         let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
-        let mut new_buffer = String::with_capacity(1_024);
-        self.registry.encode(&mut new_buffer, self.format).unwrap();
-        // ^ `unwrap()` is safe; writing to a string never fails.
+        let registry = Arc::clone(&self.registry);
+        let format = self.format;
+        // `Registry::encode()` is blocking in the general case (specifically, if collectors are used; they may use
+        // blocking I/O etc.). We cannot make metric collection non-blocking because the underlying library only provides
+        // blocking interface for collectors.
+        let new_buffer = tokio::task::spawn_blocking(move || {
+            let mut new_buffer = String::with_capacity(1_024);
+            registry.encode(&mut new_buffer, format).unwrap();
+            // ^ `unwrap()` is safe; writing to a string never fails.
+            new_buffer
+        })
+        .await
+        .unwrap(); // propagate panics should they occur in the spawned blocking task
 
         let latency = latency.observe();
         let scraped_size = new_buffer.len();
@@ -99,8 +109,7 @@ impl MetricsExporterInner {
             .collect()
     }
 
-    // TODO: consider using a streaming response?
-    fn render(&self) -> Response<Body> {
+    async fn render(&self) -> Response<Body> {
         let content_type = if matches!(self.format, Format::Prometheus) {
             Format::PROMETHEUS_CONTENT_TYPE
         } else {
@@ -109,7 +118,7 @@ impl MetricsExporterInner {
         Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, content_type)
-            .body(self.render_body())
+            .body(self.render_body().await)
             .unwrap()
     }
 }
@@ -266,7 +275,7 @@ impl<'a> MetricsExporter<'a> {
             let inner = self.inner.clone();
             future::ready(Ok::<_, hyper::Error>(service_fn(move |_| {
                 let inner = inner.clone();
-                async move { Ok::<_, hyper::Error>(inner.render()) }
+                async move { Ok::<_, hyper::Error>(inner.render().await) }
             })))
         }));
         let local_addr = server.local_addr();
@@ -308,7 +317,7 @@ impl<'a> MetricsExporter<'a> {
                 .method(Method::PUT)
                 .uri(endpoint.clone())
                 .header(header::CONTENT_TYPE, Format::OPEN_METRICS_CONTENT_TYPE)
-                .body(self.inner.render_body())
+                .body(self.inner.render_body().await)
                 .expect("Failed creating Prometheus push gateway request");
 
             match client.request(request).await {

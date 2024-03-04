@@ -55,7 +55,7 @@ async fn legacy_and_modern_metrics_can_coexist() {
     let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
     report_metrics();
 
-    let response = exporter.inner.render();
+    let response = exporter.inner.render().await;
     let response = body::to_bytes(response.into_body()).await;
     let response = response.expect("failed decoding response");
     assert_scraped_payload_is_valid(&response);
