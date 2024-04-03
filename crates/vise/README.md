@@ -32,6 +32,10 @@ Prometheus and compatible systems supports 3 main [metric types](https://prometh
 Metrics of all types can be supplied with _labels_. Each set of labels defines a separate metric. Thus, label space
 should be reasonably small.
 
+Besides these main types, Prometheus and this library support an additional **info** metric type. It should be used to observe
+values that do not change during the program lifetime (component configurations, metadata like app version / git commit, etc.).
+Values for this metric type are encoded as labels. Conceptually, an info metric is similar to a gauge with a constant value 1.
+
 ## Usage
 
 Add this to your Crate.toml:
@@ -104,7 +108,7 @@ _See also: [Prometheus guidelines](https://prometheus.io/docs/practices/naming/)
   Prefixes should be separated by a single `_` char.
 - Metrics with a unit should have a corresponding suffix (e.g., `_seconds`). This suffix is automatically added to the
   metric name if you specify its unit; you **must not** specify it manually.
-- Label names should not repeat the metric name and should not include units.
+- Label names should not repeat the metric name.
 - Label values for each label should have reasonably low cardinality.
 - If a label value encodes to a string (as opposed to an integer, integer range etc.), it should use snake_case.
 - Metrics in a `Family` should have uniform meaning. If a `Family` can be documented without going into label specifics,
