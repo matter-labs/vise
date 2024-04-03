@@ -384,7 +384,10 @@ pub use crate::{
         CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
         METRICS_REGISTRATIONS,
     },
-    wrappers::{Family, Gauge, GaugeGuard, Histogram, Info, LabeledFamily, LatencyObserver},
+    wrappers::{
+        Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily, LatencyObserver,
+        SetInfoError,
+    },
 };
 
 #[cfg(doctest)]

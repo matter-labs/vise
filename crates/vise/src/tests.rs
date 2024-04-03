@@ -378,6 +378,44 @@ fn renamed_labels() {
 }
 
 #[test]
+fn labels_with_unit() {
+    #[derive(Debug, EncodeLabelSet)]
+    #[metrics(crate = crate)]
+    struct LabelsWithUnits {
+        #[metrics(unit = Unit::Bytes)]
+        capacity: u64,
+        #[metrics(unit = Unit::Seconds)]
+        timeout: f64,
+    }
+
+    #[derive(Debug, Metrics)]
+    #[metrics(crate = crate, prefix = "test")]
+    struct InfoMetrics {
+        config: Info<LabelsWithUnits>,
+    }
+
+    let test_metrics = InfoMetrics::default();
+    test_metrics
+        .config
+        .set(LabelsWithUnits {
+            capacity: 128,
+            timeout: 0.1,
+        })
+        .ok();
+
+    let mut registry = Registry::empty();
+    registry.register_metrics(&test_metrics);
+    let mut buffer = String::new();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
+    let lines: Vec<_> = buffer.lines().collect();
+
+    assert!(
+        lines.contains(&r#"test_config_info{capacity_bytes="128",timeout_seconds="0.1"} 1"#),
+        "{lines:#?}"
+    );
+}
+
+#[test]
 fn labeled_family_with_multiple_labels() {
     type ThreeLabels = (&'static str, &'static str, u8);
     const LABEL_NAMES: [&str; 3] = ["db", "cf", "code"];

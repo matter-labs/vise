@@ -2,7 +2,9 @@
 
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, Data, DeriveInput, Field, Fields, Ident, LitStr, Path, PathArguments, Type};
+use syn::{
+    Attribute, Data, DeriveInput, Expr, Field, Fields, Ident, LitStr, Path, PathArguments, Type,
+};
 
 use std::{collections::HashSet, fmt};
 
@@ -291,6 +293,7 @@ impl EncodeLabelValueImpl {
 #[derive(Default)]
 struct LabelFieldAttrs {
     skip: Option<Path>,
+    unit: Option<Expr>,
 }
 
 impl fmt::Debug for LabelFieldAttrs {
@@ -298,6 +301,7 @@ impl fmt::Debug for LabelFieldAttrs {
         formatter
             .debug_struct("LabelFieldAttrs")
             .field("skip", &self.skip.as_ref().map(|_| ".."))
+            .field("unit", &self.unit.as_ref().map(|_| ".."))
             .finish()
     }
 }
@@ -308,6 +312,9 @@ impl ParseAttribute for LabelFieldAttrs {
         raw.parse_nested_meta(|meta| {
             if meta.path.is_ident("skip") {
                 attrs.skip = Some(meta.value()?.parse()?);
+                Ok(())
+            } else if meta.path.is_ident("unit") {
+                attrs.unit = Some(meta.value()?.parse()?);
                 Ok(())
             } else {
                 Err(meta.error("unsupported attribute"))
@@ -368,10 +375,18 @@ impl LabelField {
             )
     }
 
-    fn encode(&self, encoding: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    fn encode(&self, cr: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        let encoding = quote!(#cr::_reexports::encoding);
+
         let name = &self.name;
         let span = name.span();
         let label = self.label_literal();
+        let label = if let Some(unit) = &self.attrs.unit {
+            quote_spanned!(span=> #cr::LabelWithUnit::new(#label, #unit))
+        } else {
+            quote_spanned!(span=> #label)
+        };
+
         // Skip `Option`al fields by default if they are `None`.
         let default_skip: Path;
         let skip = if self.is_option && self.attrs.skip.is_none() {
@@ -469,8 +484,7 @@ impl EncodeLabelSetImpl {
             let fields = self.fields.as_ref().unwrap();
             let fields = fields.iter().map(|field| {
                 let cr = self.attrs.path_to_crate(field.name.span());
-                let encoding = quote!(#cr::_reexports::encoding);
-                field.encode(&encoding)
+                field.encode(&cr)
             });
             quote! {
                 #(#fields)*

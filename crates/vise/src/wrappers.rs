@@ -3,10 +3,11 @@
 use elsa::sync::FrozenMap;
 use once_cell::sync::OnceCell;
 use prometheus_client::{
-    encoding::{EncodeLabelSet, EncodeMetric, MetricEncoder},
+    encoding::{EncodeLabelKey, EncodeLabelSet, EncodeMetric, LabelKeyEncoder, MetricEncoder},
     metrics::{
         gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner, MetricType, TypedMetric,
     },
+    registry::Unit,
 };
 
 use std::{
@@ -24,6 +25,28 @@ use crate::{
     builder::BuildMetric,
     traits::{EncodedGaugeValue, GaugeValue, HistogramValue, MapLabels},
 };
+
+/// Label with a unit suffix implementing [`EncodeLabelKey`].
+#[doc(hidden)] // used in proc macros only
+#[derive(Debug)]
+pub struct LabelWithUnit {
+    name: &'static str,
+    unit: Unit,
+}
+
+impl LabelWithUnit {
+    pub const fn new(name: &'static str, unit: Unit) -> Self {
+        Self { name, unit }
+    }
+}
+
+impl EncodeLabelKey for LabelWithUnit {
+    fn encode(&self, encoder: &mut LabelKeyEncoder<'_>) -> fmt::Result {
+        use std::fmt::Write as _;
+
+        write!(encoder, "{}_{}", self.name, self.unit.as_str())
+    }
+}
 
 /// Gauge metric.
 ///
@@ -223,8 +246,8 @@ impl<S: EncodeLabelSet> Info<S> {
     /// # Errors
     ///
     /// Returns an error if the value is already set.
-    pub fn set(&self, value: S) -> Result<(), InfoSetError<S>> {
-        self.0.set(value).map_err(InfoSetError)
+    pub fn set(&self, value: S) -> Result<(), SetInfoError<S>> {
+        self.0.set(value).map_err(SetInfoError)
     }
 }
 
@@ -246,16 +269,18 @@ impl<S: EncodeLabelSet> TypedMetric for Info<S> {
     const TYPE: MetricType = MetricType::Info;
 }
 
+/// Error returned from [`Info::set()`].
 #[derive(Debug)]
-pub struct InfoSetError<S>(S);
+pub struct SetInfoError<S>(S);
 
-impl<S> InfoSetError<S> {
+impl<S> SetInfoError<S> {
+    /// Converts the error into the unsuccessfully set value.
     pub fn into_inner(self) -> S {
         self.0
     }
 }
 
-impl<S> fmt::Display for InfoSetError<S> {
+impl<S> fmt::Display for SetInfoError<S> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("cannot set info metric value; it is already set")
     }
