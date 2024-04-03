@@ -3,7 +3,7 @@
 use elsa::sync::FrozenMap;
 use once_cell::sync::OnceCell;
 use prometheus_client::{
-    encoding::{EncodeLabelKey, EncodeLabelSet, EncodeMetric, LabelKeyEncoder, MetricEncoder},
+    encoding::{EncodeLabelKey, EncodeLabelValue, LabelValueEncoder, EncodeLabelSet, EncodeMetric, LabelKeyEncoder, MetricEncoder},
     metrics::{
         gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner, MetricType, TypedMetric,
     },
@@ -45,6 +45,23 @@ impl EncodeLabelKey for LabelWithUnit {
         use std::fmt::Write as _;
 
         write!(encoder, "{}_{}", self.name, self.unit.as_str())
+    }
+}
+
+/// Wraps a [`Duration`] so that it can be used as a label value, which will be set to the fractional
+/// number of seconds in the duration, i.e. [`Duration::as_secs_f64()`]. Mostly useful for [`Info`] metrics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DurationAsSecs(pub Duration);
+
+impl From<Duration> for DurationAsSecs {
+    fn from(duration: Duration) -> Self {
+        Self(duration)
+    }
+}
+
+impl EncodeLabelValue for DurationAsSecs {
+    fn encode(&self, encoder: &mut LabelValueEncoder) -> fmt::Result {
+        EncodeLabelValue::encode(&self.0.as_secs_f64(), encoder)
     }
 }
 
@@ -220,6 +237,9 @@ impl LatencyObserver<'_> {
 }
 
 /// Information metric.
+///
+/// Information metrics represent pieces of information that are not changed during program lifetime
+/// (e.g., config parameters of a certain component).
 #[derive(Debug)]
 pub struct Info<S>(Arc<OnceCell<S>>);
 
