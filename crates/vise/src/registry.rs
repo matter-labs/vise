@@ -265,8 +265,11 @@ impl Registry {
     pub fn encode<W: fmt::Write>(&self, writer: &mut W, format: Format) -> fmt::Result {
         match format {
             Format::Prometheus | Format::OpenMetricsForPrometheus => {
-                let remove_eof_terminator = matches!(format, Format::Prometheus);
-                let mut wrapper = PrometheusWrapper::new(writer, remove_eof_terminator);
+                let mut wrapper = PrometheusWrapper::new(writer);
+                if matches!(format, Format::Prometheus) {
+                    wrapper.remove_eof_terminator();
+                    wrapper.translate_info_metrics_type();
+                }
                 text::encode(&mut wrapper, &self.inner)?;
                 wrapper.flush()
             }

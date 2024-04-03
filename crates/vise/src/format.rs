@@ -1,5 +1,7 @@
 //! Support for various metrics encoding formats.
 
+use prometheus_client::metrics::MetricType;
+
 use std::{fmt, mem};
 
 /// Metrics export format.
@@ -7,11 +9,11 @@ use std::{fmt, mem};
 /// Supported formats are quite similar, but differ how they encode counter values and whether
 /// they specify the `# EOF` terminator:
 ///
-/// | Format | `_total` suffix for counters | `# EOF` |
-/// |:-------|:-----------------------------|:--------|
-/// | [`Self::OpenMetrics`] | yes | yes |
-/// | [`Self::OpenMetricsForPrometheus`] | no | yes |
-/// | [`Self::Prometheus`] | no | no |
+/// | Format | `_total` suffix for counters | `_info` suffix for info | `# EOF` |
+/// |:-------|:-----------------------------|:------------------------|:--------|
+/// | [`Self::OpenMetrics`] | yes | yes | yes |
+/// | [`Self::OpenMetricsForPrometheus`] | no | no | yes |
+/// | [`Self::Prometheus`] | no | no | no |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Format {
@@ -23,15 +25,16 @@ pub enum Format {
     OpenMetrics,
     /// [Prometheus text format][prom]. Since it's quite similar to the OpenMetrics format, it's obtained by
     /// a streaming transform of OpenMetrics-encoded metrics that removes `_total` suffixes from
-    /// reported counter values and removes the `# EOF` terminator.
+    /// reported counter values, `_info` suffixes from reported info values + changes info types to "gauge",
+    /// and removes the `# EOF` terminator.
     ///
     /// [prom]: https://prometheus.io/docs/instrumenting/exposition_formats/
     Prometheus,
     /// OpenMetrics text format as understood by Prometheus.
     ///
     /// Prometheus *mostly* understands the OpenMetrics format (e.g., enforcing no empty lines for it).
-    /// The notable exception is counter definitions; OpenMetrics requires
-    /// to append `_total` to the counter name (like `_sum` / `_count` / `_bucket` are appended
+    /// The notable exception is counter and info definitions; OpenMetrics requires
+    /// to append `_total` to the counter name and `_info` to the info name (like `_sum` / `_count` / `_bucket` are appended
     /// to histogram names), but Prometheus doesn't understand this (yet?).
     ///
     /// See also: [issue in `prometheus-client`](https://github.com/prometheus/client_rust/issues/111)
@@ -50,7 +53,7 @@ impl Format {
 #[derive(Debug)]
 struct MetricTypeDefinition {
     name: String,
-    is_counter: bool,
+    ty: MetricType,
 }
 
 impl MetricTypeDefinition {
@@ -61,7 +64,13 @@ impl MetricTypeDefinition {
             .ok_or(fmt::Error)?;
         Ok(Self {
             name: name.to_owned(),
-            is_counter: ty == "counter",
+            ty: match ty {
+                "counter" => MetricType::Counter,
+                "gauge" => MetricType::Gauge,
+                "histogram" => MetricType::Histogram,
+                "info" => MetricType::Info,
+                _ => MetricType::Unknown,
+            },
         })
     }
 }
@@ -71,18 +80,28 @@ impl MetricTypeDefinition {
 pub(crate) struct PrometheusWrapper<'a, W> {
     writer: &'a mut W,
     remove_eof_terminator: bool,
+    translate_info_metrics_type: bool,
     last_metric_definition: Option<MetricTypeDefinition>,
     last_line: String,
 }
 
 impl<'a, W: fmt::Write> PrometheusWrapper<'a, W> {
-    pub(crate) fn new(writer: &'a mut W, remove_eof_terminator: bool) -> Self {
+    pub(crate) fn new(writer: &'a mut W) -> Self {
         Self {
             writer,
-            remove_eof_terminator,
+            remove_eof_terminator: false,
+            translate_info_metrics_type: false,
             last_metric_definition: None,
             last_line: String::new(),
         }
+    }
+
+    pub(crate) fn remove_eof_terminator(&mut self) {
+        self.remove_eof_terminator = true;
+    }
+
+    pub(crate) fn translate_info_metrics_type(&mut self) {
+        self.translate_info_metrics_type = true;
     }
 
     fn handle_line(&mut self) -> fmt::Result {
@@ -94,7 +113,11 @@ impl<'a, W: fmt::Write> PrometheusWrapper<'a, W> {
         let mut transformed_line = None;
 
         if let Some(type_def) = line.strip_prefix("# TYPE ") {
-            self.last_metric_definition = Some(MetricTypeDefinition::parse(type_def)?);
+            let metric_def = MetricTypeDefinition::parse(type_def)?;
+            if self.translate_info_metrics_type && matches!(metric_def.ty, MetricType::Info) {
+                transformed_line = Some(format!("# TYPE {} gauge", metric_def.name));
+            }
+            self.last_metric_definition = Some(metric_def);
         } else if !line.starts_with('#') {
             // `line` reports a metric value
             let name_end_pos = line
@@ -102,13 +125,25 @@ impl<'a, W: fmt::Write> PrometheusWrapper<'a, W> {
                 .ok_or(fmt::Error)?;
             let (name, rest) = line.split_at(name_end_pos);
 
-            if let Some(metric_type) = &self.last_metric_definition {
-                let truncated_name = name.strip_suffix("_total");
-
-                if truncated_name == Some(&metric_type.name) && metric_type.is_counter {
-                    // Remove `_total` suffix to the metric name, which is not present
-                    // in the Prometheus text format, but is mandatory for the OpenMetrics format.
-                    transformed_line = Some(format!("{}{rest}", metric_type.name));
+            if let Some(metric_def) = &self.last_metric_definition {
+                match metric_def.ty {
+                    MetricType::Counter => {
+                        // Remove `_total` suffix to the metric name, which is not present
+                        // in the Prometheus text format, but is mandatory for the OpenMetrics format.
+                        let truncated_name = name.strip_suffix("_total");
+                        if truncated_name == Some(&metric_def.name) {
+                            transformed_line = Some(format!("{}{rest}", metric_def.name));
+                        }
+                    }
+                    MetricType::Info => {
+                        // Remove `_info` suffix to the metric name, which is not present
+                        // in the Prometheus text format, but is mandatory for the OpenMetrics format.
+                        let truncated_name = name.strip_suffix("_info");
+                        if truncated_name == Some(&metric_def.name) {
+                            transformed_line = Some(format!("{}{rest}", metric_def.name));
+                        }
+                    }
+                    _ => { /* do nothing */ }
                 }
             }
         }
@@ -149,7 +184,8 @@ mod tests {
     #[test]
     fn translating_open_metrics_format() {
         let mut buffer = String::new();
-        let mut wrapper = PrometheusWrapper::new(&mut buffer, true);
+        let mut wrapper = PrometheusWrapper::new(&mut buffer);
+        wrapper.remove_eof_terminator();
 
         // Emulating breaking line into multiple write instructions
         write!(wrapper, "# HELP ").unwrap();
@@ -187,6 +223,9 @@ mod tests {
     #[test]
     fn translating_sample() {
         let input = "\
+            # TYPE modern_package_metadata info\n\
+            # HELP modern_package_metadata Package information.\n\
+            modern_package_metadata_info{version=\"0.1.0\"} 1\n\
             # TYPE modern_counter counter\n\
             modern_counter_total 1\n\
             # TYPE modern_gauge gauge\n\
@@ -195,6 +234,9 @@ mod tests {
             modern_counter_with_labels_total{label=\"value\"} 3\n\
             modern_counter_with_labels_total{label=\"other\"} 5";
         let expected = "\
+            # TYPE modern_package_metadata gauge\n\
+            # HELP modern_package_metadata Package information.\n\
+            modern_package_metadata{version=\"0.1.0\"} 1\n\
             # TYPE modern_counter counter\n\
             modern_counter 1\n\
             # TYPE modern_gauge gauge\n\
@@ -204,7 +246,9 @@ mod tests {
             modern_counter_with_labels{label=\"other\"} 5\n";
 
         let mut buffer = String::new();
-        let mut wrapper = PrometheusWrapper::new(&mut buffer, true);
+        let mut wrapper = PrometheusWrapper::new(&mut buffer);
+        wrapper.remove_eof_terminator();
+        wrapper.translate_info_metrics_type();
         wrapper.write_str(input).unwrap();
         wrapper.flush().unwrap();
 
