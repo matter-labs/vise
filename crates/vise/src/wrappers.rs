@@ -3,7 +3,10 @@
 use elsa::sync::FrozenMap;
 use once_cell::sync::OnceCell;
 use prometheus_client::{
-    encoding::{EncodeLabelKey, EncodeLabelValue, LabelValueEncoder, EncodeLabelSet, EncodeMetric, LabelKeyEncoder, MetricEncoder},
+    encoding::{
+        EncodeLabelKey, EncodeLabelSet, EncodeLabelValue, EncodeMetric, LabelKeyEncoder,
+        LabelValueEncoder, MetricEncoder,
+    },
     metrics::{
         gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner, MetricType, TypedMetric,
     },
@@ -129,7 +132,7 @@ impl<V: GaugeValue> Gauge<V> {
 }
 
 impl<V: GaugeValue> EncodeMetric for Gauge<V> {
-    fn encode(&self, mut encoder: MetricEncoder<'_, '_>) -> fmt::Result {
+    fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
         match self.get().encode() {
             EncodedGaugeValue::I64(value) => encoder.encode_gauge(&value),
             EncodedGaugeValue::F64(value) => encoder.encode_gauge(&value),
@@ -206,7 +209,7 @@ impl Histogram<Duration> {
 }
 
 impl<V: HistogramValue> EncodeMetric for Histogram<V> {
-    fn encode(&self, encoder: MetricEncoder<'_, '_>) -> fmt::Result {
+    fn encode(&self, encoder: MetricEncoder<'_>) -> fmt::Result {
         self.inner.encode(encoder)
     }
 
@@ -272,7 +275,7 @@ impl<S: EncodeLabelSet> Info<S> {
 }
 
 impl<S: EncodeLabelSet> EncodeMetric for Info<S> {
-    fn encode(&self, mut encoder: MetricEncoder<'_, '_>) -> fmt::Result {
+    fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
         if let Some(value) = self.0.get() {
             encoder.encode_info(value)
         } else {
@@ -510,7 +513,7 @@ where
     S: Clone + Eq + Hash,
     L: MapLabels<S>,
 {
-    fn encode(&self, mut encoder: MetricEncoder<'_, '_>) -> fmt::Result {
+    fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
         for labels in &self.inner.map.keys_cloned() {
             let metric = self.inner.map.get(labels).unwrap();
             let mapped_labels = self.labels.map_labels(labels);

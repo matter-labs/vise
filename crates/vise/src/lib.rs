@@ -419,8 +419,8 @@ pub use crate::{
         METRICS_REGISTRATIONS,
     },
     wrappers::{
-        Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily, LatencyObserver,
-        SetInfoError, DurationAsSecs,
+        DurationAsSecs, Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily,
+        LatencyObserver, SetInfoError,
     },
 };
 
