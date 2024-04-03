@@ -253,6 +253,18 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
     }
 
     // Check metrics metadata.
+    let metadata = client
+        .metric_metadata(Some("test_package_metadata"), None)
+        .await?;
+    tracing::info!(?metadata, "Got metadata for info");
+    let metadata = &metadata["test_package_metadata"][0];
+    assert_eq!(metadata.help(), "Metadata about the current Cargo package.");
+    if prom_format {
+        assert_matches!(metadata.metric_type(), MetricType::Gauge);
+    } else {
+        assert_matches!(metadata.metric_type(), MetricType::Info);
+    }
+
     let metadata = client.metric_metadata(Some("test_counter"), None).await?;
     tracing::info!(?metadata, "Got metadata for counter");
     let metadata = &metadata["test_counter"][0];
@@ -272,6 +284,15 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
         // `# UNIT` declarations are ignored in the Prometheus format
         assert_eq!(metadata.unit(), "seconds");
     }
+
+    let info_result = client.query("test_package_metadata").get().await?;
+    tracing::info!(?info_result, "Got result for query: test_package_metadata");
+    let info_vec = info_result
+        .data()
+        .as_vector()
+        .context("Info data is not a vector")?;
+    let info_labels = info_vec[0].metric();
+    assert_eq!(info_labels["version"], "0.1.0", "{info_labels:?}");
 
     let gauge_result = client.query("test_gauge_bytes").get().await?;
     tracing::info!(?gauge_result, "Got result for query: test_gauge_bytes");
