@@ -1,8 +1,9 @@
 //! Wrappers for metric types defined in `prometheus-client`.
 
 use elsa::sync::FrozenMap;
+use once_cell::sync::OnceCell;
 use prometheus_client::{
-    encoding::{EncodeMetric, MetricEncoder},
+    encoding::{EncodeLabelSet, EncodeMetric, MetricEncoder},
     metrics::{
         gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner, MetricType, TypedMetric,
     },
@@ -192,6 +193,71 @@ impl LatencyObserver<'_> {
         let elapsed = self.start.elapsed();
         self.histogram.observe(elapsed);
         elapsed
+    }
+}
+
+/// Information metric.
+#[derive(Debug)]
+pub struct Info<S>(Arc<OnceCell<S>>);
+
+impl<S> Default for Info<S> {
+    fn default() -> Self {
+        Self(Arc::default())
+    }
+}
+
+impl<S> Clone for Info<S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<S: EncodeLabelSet> Info<S> {
+    /// Gets the current value of the metric.
+    pub fn get(&self) -> Option<&S> {
+        self.0.get()
+    }
+
+    /// Sets the value of this metric.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value is already set.
+    pub fn set(&self, value: S) -> Result<(), InfoSetError<S>> {
+        self.0.set(value).map_err(InfoSetError)
+    }
+}
+
+impl<S: EncodeLabelSet> EncodeMetric for Info<S> {
+    fn encode(&self, mut encoder: MetricEncoder<'_, '_>) -> fmt::Result {
+        if let Some(value) = self.0.get() {
+            encoder.encode_info(value)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn metric_type(&self) -> MetricType {
+        MetricType::Info
+    }
+}
+
+impl<S: EncodeLabelSet> TypedMetric for Info<S> {
+    const TYPE: MetricType = MetricType::Info;
+}
+
+#[derive(Debug)]
+pub struct InfoSetError<S>(S);
+
+impl<S> InfoSetError<S> {
+    pub fn into_inner(self) -> S {
+        self.0
+    }
+}
+
+impl<S> fmt::Display for InfoSetError<S> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("cannot set info metric value; it is already set")
     }
 }
 

@@ -17,9 +17,17 @@ impl From<&'static str> for Method {
     }
 }
 
+#[derive(Debug, PartialEq, EncodeLabelSet)]
+#[metrics(crate = crate)]
+struct PackageMetadata {
+    version: &'static str,
+}
+
 #[derive(Debug, Metrics)]
 #[metrics(crate = crate, prefix = "test")]
 pub(crate) struct TestMetrics {
+    /// Test information.
+    package_metadata: Info<PackageMetadata>,
     /// Test counter.
     counter: Counter,
     #[metrics(unit = Unit::Bytes)]
@@ -44,6 +52,16 @@ fn testing_metrics() {
     let test_metrics = TestMetrics::default();
     let mut registry = Registry::empty();
     registry.register_metrics(&test_metrics);
+
+    assert_eq!(test_metrics.package_metadata.get(), None);
+    test_metrics
+        .package_metadata
+        .set(PackageMetadata { version: "0.1.0" })
+        .unwrap();
+    assert_eq!(
+        test_metrics.package_metadata.get(),
+        Some(&PackageMetadata { version: "0.1.0" })
+    );
 
     test_metrics.counter.inc();
     assert_eq!(test_metrics.counter.get(), 1);
@@ -77,6 +95,10 @@ fn testing_metrics() {
     let mut buffer = String::new();
     registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
     let lines: Vec<_> = buffer.lines().collect();
+
+    assert!(lines.contains(&"# TYPE test_package_metadata info"));
+    assert!(lines.contains(&"# HELP test_package_metadata Test information."));
+    assert!(lines.contains(&r#"test_package_metadata_info{version="0.1.0"} 1"#));
 
     // `_bytes` suffix is added automatically per Prometheus naming suggestions:
     // https://prometheus.io/docs/practices/naming/
