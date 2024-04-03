@@ -254,7 +254,9 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
 
     // Check metrics metadata.
     let metadata = client
-        .metric_metadata(Some("test_package_metadata"), None)
+        .metric_metadata()
+        .metric("test_package_metadata")
+        .get()
         .await?;
     tracing::info!(?metadata, "Got metadata for info");
     let metadata = &metadata["test_package_metadata"][0];
@@ -265,14 +267,20 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
         assert_matches!(metadata.metric_type(), MetricType::Info);
     }
 
-    let metadata = client.metric_metadata(Some("test_counter"), None).await?;
+    let metadata = client
+        .metric_metadata()
+        .metric("test_counter")
+        .get()
+        .await?;
     tracing::info!(?metadata, "Got metadata for counter");
     let metadata = &metadata["test_counter"][0];
     assert_eq!(metadata.help(), "Test counter.");
     assert_matches!(metadata.metric_type(), MetricType::Counter);
 
     let metadata = client
-        .metric_metadata(Some("test_family_of_histograms_seconds"), None)
+        .metric_metadata()
+        .metric("test_family_of_histograms_seconds")
+        .get()
         .await?;
     tracing::info!(?metadata, "Got metadata for family of histograms");
     let metadata = &metadata["test_family_of_histograms_seconds"][0];
@@ -346,7 +354,11 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
 }
 
 async fn assert_legacy_metrics(client: &Client) -> anyhow::Result<()> {
-    let metadata = client.metric_metadata(Some("legacy_counter"), None).await?;
+    let metadata = client
+        .metric_metadata()
+        .metric("legacy_counter")
+        .get()
+        .await?;
     tracing::info!(?metadata, "Got metadata for legacy counter");
     let metadata = &metadata["legacy_counter"][0];
     assert_matches!(metadata.metric_type(), MetricType::Counter);
