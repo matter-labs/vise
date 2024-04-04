@@ -15,13 +15,13 @@ pub trait Metrics: 'static + Send + Sync {
     const DESCRIPTOR: MetricGroupDescriptor;
 
     #[doc(hidden)] // implementation detail
-    fn visit_metrics(&self, visitor: MetricsVisitor<'_>);
+    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>);
 }
 
 impl<M: Metrics> Metrics for &'static M {
     const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
 
-    fn visit_metrics(&self, visitor: MetricsVisitor<'_>) {
+    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
         (**self).visit_metrics(visitor);
     }
 }
@@ -29,7 +29,7 @@ impl<M: Metrics> Metrics for &'static M {
 impl<M: Metrics> Metrics for Option<M> {
     const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
 
-    fn visit_metrics(&self, visitor: MetricsVisitor<'_>) {
+    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
         if let Some(metrics) = self {
             metrics.visit_metrics(visitor);
         }

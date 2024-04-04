@@ -1,11 +1,16 @@
 //! Wrappers for metric types defined in `prometheus-client`.
 
 use elsa::sync::FrozenMap;
+use once_cell::sync::OnceCell;
 use prometheus_client::{
-    encoding::{EncodeMetric, MetricEncoder},
+    encoding::{
+        EncodeLabelKey, EncodeLabelSet, EncodeLabelValue, EncodeMetric, LabelKeyEncoder,
+        LabelValueEncoder, MetricEncoder,
+    },
     metrics::{
         gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner, MetricType, TypedMetric,
     },
+    registry::Unit,
 };
 
 use std::{
@@ -23,6 +28,45 @@ use crate::{
     builder::BuildMetric,
     traits::{EncodedGaugeValue, GaugeValue, HistogramValue, MapLabels},
 };
+
+/// Label with a unit suffix implementing [`EncodeLabelKey`].
+#[doc(hidden)] // used in proc macros only
+#[derive(Debug)]
+pub struct LabelWithUnit {
+    name: &'static str,
+    unit: Unit,
+}
+
+impl LabelWithUnit {
+    pub const fn new(name: &'static str, unit: Unit) -> Self {
+        Self { name, unit }
+    }
+}
+
+impl EncodeLabelKey for LabelWithUnit {
+    fn encode(&self, encoder: &mut LabelKeyEncoder<'_>) -> fmt::Result {
+        use std::fmt::Write as _;
+
+        write!(encoder, "{}_{}", self.name, self.unit.as_str())
+    }
+}
+
+/// Wraps a [`Duration`] so that it can be used as a label value, which will be set to the fractional
+/// number of seconds in the duration, i.e. [`Duration::as_secs_f64()`]. Mostly useful for [`Info`] metrics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DurationAsSecs(pub Duration);
+
+impl From<Duration> for DurationAsSecs {
+    fn from(duration: Duration) -> Self {
+        Self(duration)
+    }
+}
+
+impl EncodeLabelValue for DurationAsSecs {
+    fn encode(&self, encoder: &mut LabelValueEncoder) -> fmt::Result {
+        EncodeLabelValue::encode(&self.0.as_secs_f64(), encoder)
+    }
+}
 
 /// Gauge metric.
 ///
@@ -88,7 +132,7 @@ impl<V: GaugeValue> Gauge<V> {
 }
 
 impl<V: GaugeValue> EncodeMetric for Gauge<V> {
-    fn encode(&self, mut encoder: MetricEncoder<'_, '_>) -> fmt::Result {
+    fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
         match self.get().encode() {
             EncodedGaugeValue::I64(value) => encoder.encode_gauge(&value),
             EncodedGaugeValue::F64(value) => encoder.encode_gauge(&value),
@@ -165,7 +209,7 @@ impl Histogram<Duration> {
 }
 
 impl<V: HistogramValue> EncodeMetric for Histogram<V> {
-    fn encode(&self, encoder: MetricEncoder<'_, '_>) -> fmt::Result {
+    fn encode(&self, encoder: MetricEncoder<'_>) -> fmt::Result {
         self.inner.encode(encoder)
     }
 
@@ -192,6 +236,76 @@ impl LatencyObserver<'_> {
         let elapsed = self.start.elapsed();
         self.histogram.observe(elapsed);
         elapsed
+    }
+}
+
+/// Information metric.
+///
+/// Information metrics represent pieces of information that are not changed during program lifetime
+/// (e.g., config parameters of a certain component).
+#[derive(Debug)]
+pub struct Info<S>(Arc<OnceCell<S>>);
+
+impl<S> Default for Info<S> {
+    fn default() -> Self {
+        Self(Arc::default())
+    }
+}
+
+impl<S> Clone for Info<S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<S: EncodeLabelSet> Info<S> {
+    /// Gets the current value of the metric.
+    pub fn get(&self) -> Option<&S> {
+        self.0.get()
+    }
+
+    /// Sets the value of this metric.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value is already set.
+    pub fn set(&self, value: S) -> Result<(), SetInfoError<S>> {
+        self.0.set(value).map_err(SetInfoError)
+    }
+}
+
+impl<S: EncodeLabelSet> EncodeMetric for Info<S> {
+    fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
+        if let Some(value) = self.0.get() {
+            encoder.encode_info(value)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn metric_type(&self) -> MetricType {
+        MetricType::Info
+    }
+}
+
+impl<S: EncodeLabelSet> TypedMetric for Info<S> {
+    const TYPE: MetricType = MetricType::Info;
+}
+
+/// Error returned from [`Info::set()`].
+#[derive(Debug)]
+pub struct SetInfoError<S>(S);
+
+impl<S> SetInfoError<S> {
+    /// Converts the error into the unsuccessfully set value.
+    pub fn into_inner(self) -> S {
+        self.0
+    }
+}
+
+impl<S> fmt::Display for SetInfoError<S> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("cannot set info metric value; it is already set")
     }
 }
 
@@ -399,7 +513,7 @@ where
     S: Clone + Eq + Hash,
     L: MapLabels<S>,
 {
-    fn encode(&self, mut encoder: MetricEncoder<'_, '_>) -> fmt::Result {
+    fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
         for labels in &self.inner.map.keys_cloned() {
             let metric = self.inner.map.get(labels).unwrap();
             let mapped_labels = self.labels.map_labels(labels);

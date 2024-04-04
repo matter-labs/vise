@@ -1,11 +1,7 @@
 use once_cell::sync::{Lazy, OnceCell};
-use prometheus_client::{
-    collector::Collector as CollectorTrait,
-    registry::{Descriptor, LocalMetric},
-    MaybeOwned,
-};
+use prometheus_client::{collector::Collector as CollectorTrait, encoding::DescriptorEncoder};
 
-use std::{borrow::Cow, error, fmt, iter};
+use std::{error, fmt};
 
 use crate::{
     descriptors::MetricGroupDescriptor,
@@ -14,7 +10,6 @@ use crate::{
 };
 
 type CollectorFn<M> = Box<dyn Fn() -> M + Send + Sync>;
-type CollectorItem<'a> = (Cow<'a, Descriptor>, MaybeOwned<'a, Box<dyn LocalMetric>>);
 
 /// Error that can occur when calling [`Collector::before_scrape()`].
 #[derive(Debug)]
@@ -80,21 +75,15 @@ impl<M: Metrics> Collector<M> {
 }
 
 impl<M: Metrics> CollectorTrait for &'static Collector<M> {
-    fn collect<'a>(&'a self) -> Box<dyn Iterator<Item = CollectorItem<'a>> + 'a> {
+    fn encode(&self, encoder: DescriptorEncoder<'_>) -> fmt::Result {
         if let Some(hook) = self.inner.get() {
-            Box::new(collect_metrics(&hook()))
+            let mut visitor = MetricsVisitor::for_collector(encoder);
+            hook().visit_metrics(&mut visitor);
+            visitor.check()
         } else {
-            Box::new(iter::empty())
+            Ok(())
         }
     }
-}
-
-fn collect_metrics<'a>(metrics: &impl Metrics) -> impl Iterator<Item = CollectorItem<'a>> {
-    let mut boxed_metrics = vec![];
-    metrics.visit_metrics(MetricsVisitor::for_collector(&mut boxed_metrics));
-    boxed_metrics
-        .into_iter()
-        .map(|(descriptor, metric)| (Cow::Owned(descriptor), MaybeOwned::Owned(metric)))
 }
 
 impl<M: Metrics> CollectToRegistry for Collector<M> {
@@ -126,11 +115,13 @@ impl<M: Metrics> LazyGlobalCollector<M> {
 }
 
 impl<M: Metrics> CollectorTrait for LazyGlobalCollector<M> {
-    fn collect<'a>(&'a self) -> Box<dyn Iterator<Item = CollectorItem<'a>> + 'a> {
+    fn encode(&self, encoder: DescriptorEncoder<'_>) -> fmt::Result {
         if let Some(metrics) = Lazy::get(self.0) {
-            Box::new(collect_metrics(metrics))
+            let mut visitor = MetricsVisitor::for_collector(encoder);
+            metrics.visit_metrics(&mut visitor);
+            visitor.check()
         } else {
-            Box::new(iter::empty())
+            Ok(())
         }
     }
 }

@@ -253,14 +253,34 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
     }
 
     // Check metrics metadata.
-    let metadata = client.metric_metadata(Some("test_counter"), None).await?;
+    let metadata = client
+        .metric_metadata()
+        .metric("test_package_metadata")
+        .get()
+        .await?;
+    tracing::info!(?metadata, "Got metadata for info");
+    let metadata = &metadata["test_package_metadata"][0];
+    assert_eq!(metadata.help(), "Metadata about the current Cargo package.");
+    if prom_format {
+        assert_matches!(metadata.metric_type(), MetricType::Gauge);
+    } else {
+        assert_matches!(metadata.metric_type(), MetricType::Info);
+    }
+
+    let metadata = client
+        .metric_metadata()
+        .metric("test_counter")
+        .get()
+        .await?;
     tracing::info!(?metadata, "Got metadata for counter");
     let metadata = &metadata["test_counter"][0];
     assert_eq!(metadata.help(), "Test counter.");
     assert_matches!(metadata.metric_type(), MetricType::Counter);
 
     let metadata = client
-        .metric_metadata(Some("test_family_of_histograms_seconds"), None)
+        .metric_metadata()
+        .metric("test_family_of_histograms_seconds")
+        .get()
         .await?;
     tracing::info!(?metadata, "Got metadata for family of histograms");
     let metadata = &metadata["test_family_of_histograms_seconds"][0];
@@ -272,6 +292,15 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
         // `# UNIT` declarations are ignored in the Prometheus format
         assert_eq!(metadata.unit(), "seconds");
     }
+
+    let info_result = client.query("test_package_metadata").get().await?;
+    tracing::info!(?info_result, "Got result for query: test_package_metadata");
+    let info_vec = info_result
+        .data()
+        .as_vector()
+        .context("Info data is not a vector")?;
+    let info_labels = info_vec[0].metric();
+    assert_eq!(info_labels["version"], "0.1.0", "{info_labels:?}");
 
     let gauge_result = client.query("test_gauge_bytes").get().await?;
     tracing::info!(?gauge_result, "Got result for query: test_gauge_bytes");
@@ -325,7 +354,11 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
 }
 
 async fn assert_legacy_metrics(client: &Client) -> anyhow::Result<()> {
-    let metadata = client.metric_metadata(Some("legacy_counter"), None).await?;
+    let metadata = client
+        .metric_metadata()
+        .metric("legacy_counter")
+        .get()
+        .await?;
     tracing::info!(?metadata, "Got metadata for legacy counter");
     let metadata = &metadata["legacy_counter"][0];
     assert_matches!(metadata.metric_type(), MetricType::Counter);

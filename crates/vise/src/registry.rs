@@ -2,8 +2,8 @@
 
 use linkme::distributed_slice;
 use prometheus_client::{
-    encoding::text,
-    registry::{Descriptor, LocalMetric, Metric, Registry as RegistryInner, Unit},
+    encoding::{text, DescriptorEncoder},
+    registry::{Metric, Registry as RegistryInner, Unit},
 };
 
 use std::{collections::HashMap, fmt};
@@ -237,8 +237,8 @@ impl Registry {
     /// Registers a group of metrics.
     pub fn register_metrics<M: Metrics>(&mut self, metrics: &M) {
         self.descriptors.push(&M::DESCRIPTOR);
-        let visitor = MetricsVisitor(MetricsVisitorInner::Registry(self));
-        metrics.visit_metrics(visitor);
+        let mut visitor = MetricsVisitor(MetricsVisitorInner::Registry(self));
+        metrics.visit_metrics(&mut visitor);
     }
 
     pub(crate) fn register_global_metrics<M: Metrics>(&mut self, metrics: &'static Global<M>) {
@@ -265,8 +265,11 @@ impl Registry {
     pub fn encode<W: fmt::Write>(&self, writer: &mut W, format: Format) -> fmt::Result {
         match format {
             Format::Prometheus | Format::OpenMetricsForPrometheus => {
-                let remove_eof_terminator = matches!(format, Format::Prometheus);
-                let mut wrapper = PrometheusWrapper::new(writer, remove_eof_terminator);
+                let mut wrapper = PrometheusWrapper::new(writer);
+                if matches!(format, Format::Prometheus) {
+                    wrapper.remove_eof_terminator();
+                    wrapper.translate_info_metrics_type();
+                }
                 text::encode(&mut wrapper, &self.inner)?;
                 wrapper.flush()
             }
@@ -278,7 +281,7 @@ impl Registry {
 #[derive(Debug)]
 enum MetricsVisitorInner<'a> {
     Registry(&'a mut Registry),
-    Collector(&'a mut Vec<(Descriptor, Box<dyn LocalMetric>)>),
+    Collector(Result<DescriptorEncoder<'a>, fmt::Error>),
 }
 
 /// Visitor for a group of metrics in a [`Registry`].
@@ -286,8 +289,15 @@ enum MetricsVisitorInner<'a> {
 pub struct MetricsVisitor<'a>(MetricsVisitorInner<'a>);
 
 impl<'a> MetricsVisitor<'a> {
-    pub(crate) fn for_collector(metrics: &'a mut Vec<(Descriptor, Box<dyn LocalMetric>)>) -> Self {
-        Self(MetricsVisitorInner::Collector(metrics))
+    pub(crate) fn for_collector(encoder: DescriptorEncoder<'a>) -> Self {
+        Self(MetricsVisitorInner::Collector(Ok(encoder)))
+    }
+
+    pub(crate) fn check(self) -> fmt::Result {
+        match self.0 {
+            MetricsVisitorInner::Registry(_) => Ok(()),
+            MetricsVisitorInner::Collector(res) => res.map(drop),
+        }
     }
 
     /// Registers a metric of family of metrics.
@@ -306,11 +316,31 @@ impl<'a> MetricsVisitor<'a> {
                     registry.inner.register(name, help, metric);
                 }
             }
-            MetricsVisitorInner::Collector(collector) => {
-                let descriptor = Descriptor::new(name, help, unit, None, vec![]);
-                collector.push((descriptor, Box::new(metric)));
+            MetricsVisitorInner::Collector(encode_result) => {
+                if let Ok(encoder) = encode_result {
+                    let new_result =
+                        Self::encode_metric(encoder, name, help, unit.as_ref(), &metric);
+                    if let Err(err) = new_result {
+                        *encode_result = Err(err);
+                    }
+                }
             }
         }
+    }
+
+    fn encode_metric(
+        encoder: &mut DescriptorEncoder<'_>,
+        name: &'static str,
+        help: &'static str,
+        unit: Option<&Unit>,
+        metric: &impl Metric,
+    ) -> fmt::Result {
+        // Append a full stop to `help` to be consistent with registered metrics.
+        let mut help = String::from(help);
+        help.push('.');
+
+        let metric_encoder = encoder.encode_descriptor(name, &help, unit, metric.metric_type())?;
+        metric.encode(metric_encoder)
     }
 }
 

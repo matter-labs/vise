@@ -339,7 +339,7 @@ impl MetricsImpl {
             impl #cr::Metrics for #name {
                 const DESCRIPTOR: #cr::descriptors::MetricGroupDescriptor = #descriptor;
 
-                fn visit_metrics(&self, mut visitor: #cr::MetricsVisitor<'_>) {
+                fn visit_metrics(&self, visitor: &mut #cr::MetricsVisitor<'_>) {
                     #(#visit_fields;)*
                 }
             }

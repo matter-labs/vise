@@ -6,7 +6,7 @@ use tokio::sync::watch;
 use std::{env, time::Duration};
 
 use vise::{
-    Buckets, Counter, EncodeLabelSet, EncodeLabelValue, Family, Format, Gauge, Histogram,
+    Buckets, Counter, EncodeLabelSet, EncodeLabelValue, Family, Format, Gauge, Histogram, Info,
     LabeledFamily, Metrics, Unit,
 };
 use vise_exporter::MetricsExporter;
@@ -18,9 +18,16 @@ enum Method {
     SendTransaction,
 }
 
+#[derive(Debug, EncodeLabelSet)]
+struct PackageMetadata {
+    version: &'static str,
+}
+
 #[derive(Debug, Metrics)]
 #[metrics(prefix = "test")]
 struct TestMetrics {
+    /// Metadata about the current Cargo package.
+    package_metadata: Info<PackageMetadata>,
     /// Test counter.
     counter: Counter,
     #[metrics(unit = Unit::Bytes)]
@@ -94,6 +101,11 @@ static METRICS: vise::Global<TestMetrics> = vise::Global::new();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    METRICS
+        .package_metadata
+        .set(PackageMetadata { version: "0.1.0" })
+        .unwrap();
+
     const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 
     let mut args: Vec<_> = env::args().skip(1).collect();

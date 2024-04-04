@@ -1,5 +1,5 @@
 use prometheus_client::{
-    encoding::EncodeMetric,
+    encoding::{EncodeLabelSet, EncodeMetric},
     metrics::{counter::Counter, TypedMetric},
 };
 
@@ -7,7 +7,7 @@ use std::hash::Hash;
 
 use crate::{
     traits::{GaugeValue, HistogramValue},
-    wrappers::{Family, Gauge, Histogram},
+    wrappers::{Family, Gauge, Histogram, Info},
     Buckets,
 };
 
@@ -83,6 +83,14 @@ impl<V: HistogramValue> BuildMetric for Histogram<V> {
 
     fn build(builder: Self::Builder) -> Self {
         Histogram::new(builder.buckets)
+    }
+}
+
+impl<S: 'static + EncodeLabelSet> BuildMetric for Info<S> {
+    type Builder = MetricBuilder;
+
+    fn build(_builder: Self::Builder) -> Self {
+        Self::default()
     }
 }
 

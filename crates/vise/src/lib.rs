@@ -243,6 +243,13 @@ pub use vise_macros::EncodeLabelValue;
 ///
 /// [`EncodeLabelSet`]: trait@prometheus_client::encoding::EncodeLabelSet
 ///
+/// ## `unit`
+///
+/// **Type:** expression evaluating to [`Unit`]
+///
+/// Specifies unit of measurement for a label. The unit will be added to the label name as a suffix
+/// (e.g., `timeout_seconds` if placed on a field named `timeout`). This is mostly useful for [`Info`] metrics.
+///
 /// # Examples
 ///
 /// ## Set with a single label
@@ -269,6 +276,33 @@ pub use vise_macros::EncodeLabelValue;
 ///     /// Numeric label.
 ///     num: u8,
 /// }
+/// ```
+///
+/// ## Set for info metric
+///
+/// ```
+/// use vise::{EncodeLabelSet, DurationAsSecs, Unit};
+/// use std::time::Duration;
+///
+/// #[derive(Debug, EncodeLabelSet)]
+/// struct InfoLabels {
+///     /// Simple label.
+///     version: &'static str,
+///     /// Label with a unit.
+///     #[metrics(unit = Unit::Seconds)]
+///     request_timeout: DurationAsSecs,
+///     /// Another label with a unit.
+///     #[metrics(unit = Unit::Bytes)]
+///     buffer_capacity: u64,
+/// }
+///
+/// let labels = InfoLabels {
+///     version: "0.1.0",
+///     request_timeout: Duration::from_millis(100).into(),
+///     buffer_capacity: 1_024,
+/// };
+/// // will be exported as the following labels:
+/// // { version="0.1.0", request_timeout_seconds="0.1", buffer_capacity="1024" }
 /// ```
 pub use vise_macros::EncodeLabelSet;
 
@@ -384,7 +418,10 @@ pub use crate::{
         CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
         METRICS_REGISTRATIONS,
     },
-    wrappers::{Family, Gauge, GaugeGuard, Histogram, LabeledFamily, LatencyObserver},
+    wrappers::{
+        DurationAsSecs, Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily,
+        LatencyObserver, SetInfoError,
+    },
 };
 
 #[cfg(doctest)]
