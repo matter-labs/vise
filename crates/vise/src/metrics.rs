@@ -41,6 +41,12 @@ impl<M: Metrics> Metrics for Option<M> {
 #[derive(Debug)]
 pub struct Global<M: Metrics>(pub(crate) Lazy<M>);
 
+impl<M: Metrics + Default> Default for Global<M> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<M: Metrics + Default> Global<M> {
     /// Creates a new metrics instance.
     pub const fn new() -> Self {

@@ -191,6 +191,7 @@ impl HistogramValue for Duration {
 macro_rules! impl_histogram_value_for_int {
     ($int:ty) => {
         impl HistogramValue for $int {
+            #[allow(clippy::cast_precision_loss)] // fine for metrics
             fn encode(self) -> f64 {
                 self as f64
             }

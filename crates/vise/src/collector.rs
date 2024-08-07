@@ -50,6 +50,12 @@ impl<M> fmt::Debug for Collector<M> {
     }
 }
 
+impl<M: Metrics> Default for Collector<M> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<M: Metrics> Collector<M> {
     /// Creates a new collector.
     pub const fn new() -> Self {
