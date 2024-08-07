@@ -390,7 +390,7 @@ pub use vise_macros::register;
 
 #[doc(hidden)] // only used by the proc macros
 pub mod _reexports {
-    pub use linkme;
+    pub use ctor::ctor;
     pub use prometheus_client::{encoding, metrics::TypedMetric};
 }
 

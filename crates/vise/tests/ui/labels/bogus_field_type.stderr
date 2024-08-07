@@ -5,12 +5,12 @@ error[E0277]: the trait bound `Vec<String>: EncodeLabelValue` is not satisfied
   |     ^^^^^^ the trait `EncodeLabelValue` is not implemented for `Vec<String>`
   |
   = help: the following other types implement trait `EncodeLabelValue`:
-            isize
-            i8
-            i16
-            i32
-            i64
-            i128
-            usize
-            u8
+            &str
+            Arc<T>
+            Box<T>
+            Cow<'a, str>
+            DurationAsSecs
+            LabelRef<'_, S>
+            Option<T>
+            Rc<T>
           and $N others

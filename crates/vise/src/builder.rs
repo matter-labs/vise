@@ -20,6 +20,12 @@ pub struct MetricBuilder<B = (), L = ()> {
     labels: L,
 }
 
+impl Default for MetricBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricBuilder {
     /// Creates a builder with buckets and labels not configured.
     pub const fn new() -> Self {

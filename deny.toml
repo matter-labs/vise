@@ -35,7 +35,6 @@ allow = [
   # Permissive licenses
   "Apache-2.0",
   "BSD-2-Clause",
-  "BSD-3-Clause",
   "MIT",
   "Unicode-DFS-2016",
 ]
@@ -47,9 +46,6 @@ multiple-versions = "deny"
 skip = [
   # Old version used by `metrics-util`. A newer version is used by `version-sync` (a dev dependency).
   { name = "hashbrown", version = "^0.13" },
-  # Old `syn` version required by `derive_more`. Since it's a proc macro dep required
-  # from a dev dependency, having a duplicate version is sort of OK.
-  { name = "syn", version = "^1" },
   # Old version used by several crates. Largely a codegen dep, so using multiple versions shouldn't
   # be very problematic.
   { name = "bitflags", version = "^1" },
