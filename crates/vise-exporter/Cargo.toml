@@ -17,7 +17,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-vise = { version = "0.1.0", path = "../vise" }
+vise = { version = "0.2.0", path = "../vise" }
 
 hyper.workspace = true
 metrics-exporter-prometheus = { workspace = true, optional = true }
