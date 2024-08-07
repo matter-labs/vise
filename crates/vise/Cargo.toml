@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-vise-macros = { version = "0.1.0", path = "../vise-macros" }
+vise-macros = { version = "=0.1.1", path = "../vise-macros" }
 
 compile-fmt.workspace = true
 elsa.workspace = true

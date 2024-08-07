@@ -17,7 +17,7 @@ Add this to your Crate.toml:
 
 ```toml
 [dependencies]
-vise-exporter = "0.1.0"
+vise-exporter = "0.1.1"
 ```
 
 An exporter can be initialized from a metrics `Registry`:

@@ -42,7 +42,7 @@ Add this to your Crate.toml:
 
 ```toml
 [dependencies]
-vise = "0.1.0"
+vise = "0.1.1"
 ```
 
 ### Defining and reporting metrics
