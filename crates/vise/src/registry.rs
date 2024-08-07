@@ -1,11 +1,11 @@
 //! Wrapper around metrics registry.
 
-use linkme::distributed_slice;
 use prometheus_client::{
     encoding::{text, DescriptorEncoder},
     registry::{Metric, Registry as RegistryInner, Unit},
 };
 
+use std::sync::Mutex;
 use std::{collections::HashMap, fmt};
 
 use crate::{
@@ -129,10 +129,11 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
     /// Creates a registry with all [`register`](crate::register)ed [`Global`] metrics
     /// and [`Collector`]s. If a filtering predicate [was provided](MetricsCollection::filter()),
     /// only metrics satisfying this function will be collected.
+    #[allow(clippy::missing_panics_doc)]
     pub fn collect(mut self) -> Registry {
         let mut registry = Registry::empty();
         registry.is_lazy = self.is_lazy;
-        for metric in METRICS_REGISTRATIONS {
+        for metric in METRICS_REGISTRATIONS.get() {
             if (self.filter_fn)(metric.descriptor()) {
                 metric.collect_to_registry(&mut registry);
             }
@@ -353,6 +354,43 @@ pub trait CollectToRegistry: 'static + Send + Sync {
     fn collect_to_registry(&'static self, registry: &mut Registry);
 }
 
+// Intentionally not re-exported; used by the proc macros
+pub struct MetricsRegistrations {
+    inner: Mutex<Vec<&'static dyn CollectToRegistry>>,
+}
+
+impl fmt::Debug for MetricsRegistrations {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Ok(metrics) = self.inner.lock() {
+            let descriptors = metrics.iter().map(|metrics| metrics.descriptor());
+            formatter.debug_list().entries(descriptors).finish()
+        } else {
+            formatter
+                .debug_tuple("MetricsRegistrations")
+                .field(&"poisoned")
+                .finish()
+        }
+    }
+}
+
+impl MetricsRegistrations {
+    const fn new() -> Self {
+        Self {
+            inner: Mutex::new(Vec::new()),
+        }
+    }
+
+    // Only called by the `register` proc macro before main. `unwrap()` isn't expected to panic (panicking before main could lead to UB)
+    // since it's just pushing a value into a `Vec`. If this becomes a concern, we could rework `MetricsRegistrations`
+    // to use a lock-free linked list as in `inventory`: https://github.com/dtolnay/inventory/blob/f15e000224ca5d873097d406287bf79905f12c35/src/lib.rs#L190
+    pub fn push(&self, metrics: &'static dyn CollectToRegistry) {
+        self.inner.lock().unwrap().push(metrics);
+    }
+
+    fn get(&self) -> Vec<&'static dyn CollectToRegistry> {
+        self.inner.lock().unwrap().clone()
+    }
+}
+
 #[doc(hidden)] // only used by the proc macros
-#[distributed_slice]
-pub static METRICS_REGISTRATIONS: [&'static dyn CollectToRegistry] = [..];
+pub static METRICS_REGISTRATIONS: MetricsRegistrations = MetricsRegistrations::new();

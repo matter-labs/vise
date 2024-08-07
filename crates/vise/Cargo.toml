@@ -16,7 +16,7 @@ vise-macros = { version = "0.1.0", path = "../vise-macros" }
 
 compile-fmt.workspace = true
 elsa.workspace = true
-linkme.workspace = true
+ctor.workspace = true
 once_cell.workspace = true
 prometheus-client.workspace = true
 
