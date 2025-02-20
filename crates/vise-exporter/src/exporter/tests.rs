@@ -6,7 +6,6 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use hyper::body::Bytes;
 use tokio::sync::{mpsc, Mutex};
 use tracing::subscriber::Subscriber;
 use tracing_capture::{CaptureLayer, SharedStorage};
@@ -55,9 +54,7 @@ async fn legacy_and_modern_metrics_can_coexist() {
     let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
     report_metrics();
 
-    let response = exporter.inner.render().await;
-    let response = body::to_bytes(response.into_body()).await;
-    let response = response.expect("failed decoding response");
+    let response = exporter.inner.render().await.into_body();
     assert_scraped_payload_is_valid(&response);
 }
 
@@ -77,8 +74,7 @@ fn report_metrics() {
     }
 }
 
-fn assert_scraped_payload_is_valid(payload: &Bytes) {
-    let payload = str::from_utf8(payload).unwrap();
+fn assert_scraped_payload_is_valid(payload: &str) {
     let payload_lines: Vec<_> = payload.lines().collect();
 
     assert!(payload_lines.iter().all(|line| !line.is_empty()));
@@ -136,15 +132,15 @@ impl MockServerBehavior {
         }
     }
 
-    fn response(self) -> Response<Body> {
+    fn response(self) -> Response<String> {
         match self {
             Self::Ok => Response::builder()
                 .status(StatusCode::ACCEPTED)
-                .body(Body::empty())
+                .body(String::new())
                 .unwrap(),
             Self::Error => Response::builder()
                 .status(StatusCode::SERVICE_UNAVAILABLE)
-                .body(Body::from(b"Mistake!" as &[u8]))
+                .body("Mistake!".into())
                 .unwrap(),
             Self::Panic => panic!("oops"),
         }
@@ -173,23 +169,34 @@ async fn using_push_gateway() {
     let (req_sender, mut req_receiver) = mpsc::unbounded_channel();
 
     // Bind the mock server to a random free port.
-    let mock_server = Server::bind(&bind_address).serve(make_service_fn(move |_| {
-        let req_sender = req_sender.clone();
-        future::ready(Ok::<_, hyper::Error>(service_fn(move |req| {
-            assert_eq!(*req.method(), Method::PUT);
+    let listener = TcpListener::bind(bind_address).await.unwrap();
+    let local_addr = listener.local_addr().unwrap();
+    let service = service_fn(move |req: Request<Incoming>| {
+        assert_eq!(*req.method(), Method::PUT);
 
-            let behavior = MockServerBehavior::from_counter(&REQUEST_COUNTER);
-            let req_sender = req_sender.clone();
-            async move {
-                let headers = req.headers().clone();
-                let body = body::to_bytes(req.into_body()).await?;
-                req_sender.send((headers, body)).ok();
-                Ok::<_, hyper::Error>(behavior.response())
-            }
-        })))
-    }));
-    let local_addr = mock_server.local_addr();
-    tokio::spawn(mock_server);
+        let behavior = MockServerBehavior::from_counter(&REQUEST_COUNTER);
+        let req_sender = req_sender.clone();
+        async move {
+            let headers = req.headers().clone();
+            let body = req.into_body().collect().await?.to_bytes();
+            req_sender.send((headers, body)).ok();
+            Ok::<_, hyper::Error>(behavior.response())
+        }
+    });
+
+    tokio::spawn(async move {
+        loop {
+            let (socket, _) = listener.accept().await.unwrap();
+            let io = TokioIo::new(socket);
+            let service = service.clone();
+            tokio::spawn(async move {
+                http1::Builder::new()
+                    .serve_connection(io, service)
+                    .await
+                    .unwrap();
+            });
+        }
+    });
 
     let exporter = MetricsExporter::default();
     #[cfg(feature = "legacy")]
@@ -210,7 +217,8 @@ async fn using_push_gateway() {
             request_headers[&header::CONTENT_TYPE],
             Format::OPEN_METRICS_CONTENT_TYPE
         );
-        assert_scraped_payload_is_valid(&request_body);
+        let request_body = str::from_utf8(&request_body).unwrap();
+        assert_scraped_payload_is_valid(request_body);
     }
 
     assert_logs(&tracing_storage.lock());

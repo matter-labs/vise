@@ -19,7 +19,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 vise = { version = "0.2.0", path = "../vise" }
 
+http-body-util.workspace = true
 hyper.workspace = true
+hyper-util.workspace = true
 metrics-exporter-prometheus = { workspace = true, optional = true }
 once_cell.workspace = true
 tokio = { workspace = true, features = ["time"] }

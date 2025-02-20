@@ -178,6 +178,7 @@ async fn main() {
             stop_receiver_copy.changed().await.ok();
         })
         .bind(bind_address)
+        .await
         .unwrap_or_else(|err| panic!("Failed binding to `{bind_address}`: {err}"));
     println!("local_addr={}", exporter_server.local_addr());
     // ^ Print the local server address so that it can be used in integration tests
