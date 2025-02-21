@@ -157,6 +157,36 @@ fn tracing_subscriber(storage: &SharedStorage) -> impl Subscriber {
 }
 
 #[tokio::test]
+async fn graceful_shutdown_works_as_expected() {
+    let (shutdown_sender, mut shutdown) = watch::channel(());
+    let exporter = MetricsExporter::default().with_graceful_shutdown(async move {
+        shutdown.changed().await.ok();
+    });
+    #[cfg(feature = "legacy")]
+    let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
+
+    let bind_address: SocketAddr = (Ipv4Addr::LOCALHOST, 0).into();
+    let server = exporter.bind(bind_address).await.unwrap();
+    let local_addr = server.local_addr();
+    let server_task = tokio::spawn(server.start());
+    report_metrics();
+
+    let url: Uri = format!("http://{local_addr}/metrics").parse().unwrap();
+    let client = Client::builder(TokioExecutor::new()).build_http::<String>();
+    let response = client.get(url.clone()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response.into_body().collect().await.unwrap().to_bytes();
+    let payload = str::from_utf8(&payload).unwrap();
+    assert_scraped_payload_is_valid(payload);
+
+    shutdown_sender.send_replace(());
+    server_task.await.unwrap().unwrap();
+
+    let err = client.get(url).await.unwrap_err();
+    assert!(err.is_connect(), "{err:?}");
+}
+
+#[tokio::test]
 async fn using_push_gateway() {
     static REQUEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 

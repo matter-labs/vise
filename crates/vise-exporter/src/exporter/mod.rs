@@ -312,6 +312,7 @@ impl<'a> MetricsExporter<'a> {
 
             tracing::info!("Stop signal received, Prometheus metrics exporter is shutting down");
             // Send the graceful shutdown signal to all alive connections.
+            drop(started_shutdown);
             started_shutdown_sender.send_replace(());
             // Wait until all connections are dropped.
             started_shutdown_sender.closed().await;
@@ -446,7 +447,7 @@ impl MetricsServer<'_> {
         self.local_addr
     }
 
-    /// Starts this server.
+    /// Starts this server. Resolves once the server is shut down.
     ///
     /// # Errors
     ///
