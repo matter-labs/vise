@@ -1,7 +1,7 @@
 //! Traits used for metric definitions, such as [`GaugeValue`] and [`HistogramValue`].
 
 use prometheus_client::{
-    encoding::{EncodeLabel, EncodeLabelSet, EncodeLabelValue, LabelSetEncoder, LabelValueEncoder},
+    encoding::{EncodeLabel, EncodeLabelValue, LabelSetEncoder, LabelValueEncoder},
     metrics::gauge,
 };
 
@@ -10,6 +10,46 @@ use std::{
     sync::atomic::{AtomicI64, AtomicIsize, AtomicU64, AtomicUsize, Ordering},
     time::Duration,
 };
+
+/// Encodes a label set.
+///
+/// This trait is almost identical to [`EncodeLabelSet` from `prometheus_client`](prometheus_client::encoding::EncodeLabelSet),
+/// other than taking the encoder by reference, thus allowing to compose label sets.
+pub trait EncodeLabelSet {
+    /// Performs encoding.
+    ///
+    /// # Errors
+    ///
+    /// Must propagate I/O errors.
+    fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result;
+}
+
+impl<T: EncodeLabelSet + ?Sized> EncodeLabelSet for &T {
+    fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
+        (**self).encode(encoder)
+    }
+}
+
+impl<T: EncodeLabel> EncodeLabelSet for [T] {
+    fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
+        for label in self {
+            label.encode(encoder.encode_label())?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: EncodeLabel, const N: usize> EncodeLabelSet for [T; N] {
+    fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
+        <[T]>::encode(self, encoder)
+    }
+}
+
+impl<T: EncodeLabel> EncodeLabelSet for Vec<T> {
+    fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
+        <[T]>::encode(self, encoder)
+    }
+}
 
 /// Encoded value of a gauge.
 #[derive(Debug, Clone, Copy)]
@@ -232,7 +272,7 @@ impl<S: EncodeLabelSet> MapLabels<S> for () {
 pub struct LabelRef<'a, S>(pub &'a S);
 
 impl<S: EncodeLabelSet> EncodeLabelSet for LabelRef<'_, S> {
-    fn encode(&self, encoder: LabelSetEncoder) -> fmt::Result {
+    fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
         self.0.encode(encoder)
     }
 }
@@ -290,7 +330,7 @@ macro_rules! impl_encode_for_static_label_set {
         where
             $($typ: EncodeLabelValue,)+
         {
-            fn encode(&self, mut encoder: LabelSetEncoder) -> fmt::Result {
+            fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
                 $(
                 let label = (self.label_keys[$idx], LabelRef(self.label_values.$idx));
                 EncodeLabel::encode(&label, encoder.encode_label())?;

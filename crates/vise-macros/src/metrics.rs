@@ -151,7 +151,7 @@ impl MetricsField {
                 docs.push_str(line);
             }
         }
-        if docs.ends_with(|ch: char| ch == '.' || ch == '!' || ch == '?') {
+        if docs.ends_with(['.', '!', '?']) {
             // Remove the trailing punctuation since it'll be inserted automatically by the `Registry`.
             docs.pop();
         }

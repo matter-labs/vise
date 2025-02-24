@@ -2,16 +2,19 @@
 
 use prometheus_client::{
     encoding::{text, DescriptorEncoder},
-    registry::{Metric, Registry as RegistryInner, Unit},
+    registry::{Registry as RegistryInner, Unit},
 };
 
+use prometheus_client::registry::Metric;
 use std::sync::Mutex;
 use std::{collections::HashMap, fmt};
 
+use crate::encoding::{AdvancedMetric, AdvancedMetricEncoder, LabelGroups};
 use crate::{
     collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
     format::{Format, PrometheusWrapper},
+    traits::EncodeLabelSet,
     Global, Metrics,
 };
 
@@ -282,7 +285,10 @@ impl Registry {
 #[derive(Debug)]
 enum MetricsVisitorInner<'a> {
     Registry(&'a mut Registry),
-    Collector(Result<DescriptorEncoder<'a>, fmt::Error>),
+    Collector {
+        encoder: Result<DescriptorEncoder<'a>, fmt::Error>,
+        label_groups: LabelGroups,
+    },
 }
 
 /// Visitor for a group of metrics in a [`Registry`].
@@ -291,13 +297,34 @@ pub struct MetricsVisitor<'a>(MetricsVisitorInner<'a>);
 
 impl<'a> MetricsVisitor<'a> {
     pub(crate) fn for_collector(encoder: DescriptorEncoder<'a>) -> Self {
-        Self(MetricsVisitorInner::Collector(Ok(encoder)))
+        Self(MetricsVisitorInner::Collector {
+            encoder: Ok(encoder),
+            label_groups: LabelGroups::default(),
+        })
     }
 
     pub(crate) fn check(self) -> fmt::Result {
         match self.0 {
             MetricsVisitorInner::Registry(_) => Ok(()),
-            MetricsVisitorInner::Collector(res) => res.map(drop),
+            MetricsVisitorInner::Collector { encoder, .. } => encoder.map(drop),
+        }
+    }
+
+    pub(crate) fn push_group_labels(&mut self, labels: impl EncodeLabelSet + 'static) {
+        match &mut self.0 {
+            MetricsVisitorInner::Registry(_) => { /* do nothing */ }
+            MetricsVisitorInner::Collector { label_groups, .. } => {
+                label_groups.0.push(Box::new(labels));
+            }
+        }
+    }
+
+    pub(crate) fn pop_group_labels(&mut self) {
+        match &mut self.0 {
+            MetricsVisitorInner::Registry(_) => { /* do nothing */ }
+            MetricsVisitorInner::Collector { label_groups, .. } => {
+                label_groups.0.pop();
+            }
         }
     }
 
@@ -307,7 +334,7 @@ impl<'a> MetricsVisitor<'a> {
         name: &'static str,
         help: &'static str,
         unit: Option<Unit>,
-        metric: impl Metric,
+        metric: impl Metric + AdvancedMetric,
     ) {
         match &mut self.0 {
             MetricsVisitorInner::Registry(registry) => {
@@ -317,12 +344,21 @@ impl<'a> MetricsVisitor<'a> {
                     registry.inner.register(name, help, metric);
                 }
             }
-            MetricsVisitorInner::Collector(encode_result) => {
-                if let Ok(encoder) = encode_result {
-                    let new_result =
-                        Self::encode_metric(encoder, name, help, unit.as_ref(), &metric);
+            MetricsVisitorInner::Collector {
+                encoder: res,
+                label_groups,
+            } => {
+                if let Ok(encoder) = res {
+                    let new_result = Self::encode_metric(
+                        encoder,
+                        name,
+                        help,
+                        unit.as_ref(),
+                        label_groups,
+                        &metric,
+                    );
                     if let Err(err) = new_result {
-                        *encode_result = Err(err);
+                        *res = Err(err);
                     }
                 }
             }
@@ -334,14 +370,16 @@ impl<'a> MetricsVisitor<'a> {
         name: &'static str,
         help: &'static str,
         unit: Option<&Unit>,
-        metric: &impl Metric,
+        label_groups: &LabelGroups,
+        metric: &impl AdvancedMetric,
     ) -> fmt::Result {
         // Append a full stop to `help` to be consistent with registered metrics.
         let mut help = String::from(help);
         help.push('.');
 
         let metric_encoder = encoder.encode_descriptor(name, &help, unit, metric.metric_type())?;
-        metric.encode(metric_encoder)
+        let metric_encoder = AdvancedMetricEncoder::new(metric_encoder, label_groups);
+        metric.advanced_encode(metric_encoder)
     }
 }
 

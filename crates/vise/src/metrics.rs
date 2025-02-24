@@ -1,12 +1,15 @@
 //! Core `Metrics` trait defined by the crate.
 
 use once_cell::sync::Lazy;
+use std::hash::Hash;
 
 use std::ops;
 
 use crate::{
     descriptors::MetricGroupDescriptor,
     registry::{CollectToRegistry, MetricsVisitor, Registry},
+    traits::EncodeLabelSet,
+    Family,
 };
 
 /// Collection of metrics for a library or application. Should be derived using the corresponding macro.
@@ -32,6 +35,22 @@ impl<M: Metrics> Metrics for Option<M> {
     fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
         if let Some(metrics) = self {
             metrics.visit_metrics(visitor);
+        }
+    }
+}
+
+impl<S, M> Metrics for Family<S, M>
+where
+    S: EncodeLabelSet + Clone + Eq + Hash + Send + Sync + 'static,
+    M: Metrics + Default,
+{
+    const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
+
+    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
+        for (labels, metrics) in self.to_entries() {
+            visitor.push_group_labels(labels);
+            metrics.visit_metrics(visitor);
+            visitor.pop_group_labels();
         }
     }
 }

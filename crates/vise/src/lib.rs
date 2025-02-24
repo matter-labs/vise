@@ -398,6 +398,7 @@ mod buckets;
 mod builder;
 mod collector;
 pub mod descriptors;
+mod encoding;
 mod format;
 mod metrics;
 mod registry;

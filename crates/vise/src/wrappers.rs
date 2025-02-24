@@ -4,11 +4,12 @@ use elsa::sync::FrozenMap;
 use once_cell::sync::OnceCell;
 use prometheus_client::{
     encoding::{
-        EncodeLabelKey, EncodeLabelSet, EncodeLabelValue, EncodeMetric, LabelKeyEncoder,
-        LabelValueEncoder, MetricEncoder,
+        EncodeLabelKey, EncodeLabelValue, EncodeMetric, LabelKeyEncoder, LabelValueEncoder,
+        MetricEncoder,
     },
     metrics::{
-        gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner, MetricType, TypedMetric,
+        counter::Counter, gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner,
+        MetricType, TypedMetric,
     },
     registry::Unit,
 };
@@ -23,10 +24,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::encoding::{AdvancedMetric, AdvancedMetricEncoder, LabelSetWrapper};
 use crate::{
     buckets::Buckets,
     builder::BuildMetric,
-    traits::{EncodedGaugeValue, GaugeValue, HistogramValue, MapLabels},
+    traits::{EncodeLabelSet, EncodedGaugeValue, GaugeValue, HistogramValue, MapLabels},
 };
 
 /// Label with a unit suffix implementing [`EncodeLabelKey`].
@@ -67,6 +69,8 @@ impl EncodeLabelValue for DurationAsSecs {
         EncodeLabelValue::encode(&self.0.as_secs_f64(), encoder)
     }
 }
+
+impl<N, A> AdvancedMetric for Counter<N, A> where Self: EncodeMetric + TypedMetric {}
 
 /// Gauge metric.
 ///
@@ -148,6 +152,8 @@ impl<V: GaugeValue> TypedMetric for Gauge<V> {
     const TYPE: MetricType = MetricType::Gauge;
 }
 
+impl<V: GaugeValue> AdvancedMetric for Gauge<V> {}
+
 /// Guard for a [`Gauge`] returned by [`Gauge::inc_guard()`]. When dropped, a guard decrements
 /// the gauge by the same value that it was increased by when creating the guard.
 #[derive(Debug)]
@@ -222,6 +228,8 @@ impl<V: HistogramValue> TypedMetric for Histogram<V> {
     const TYPE: MetricType = MetricType::Histogram;
 }
 
+impl<V: HistogramValue> AdvancedMetric for Histogram<V> {}
+
 /// Observer of latency for a [`Histogram`].
 #[must_use = "`LatencyObserver` should be `observe()`d"]
 #[derive(Debug)]
@@ -277,7 +285,7 @@ impl<S: EncodeLabelSet> Info<S> {
 impl<S: EncodeLabelSet> EncodeMetric for Info<S> {
     fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
         if let Some(value) = self.0.get() {
-            encoder.encode_info(value)
+            encoder.encode_info(&LabelSetWrapper(value))
         } else {
             Ok(())
         }
@@ -291,6 +299,8 @@ impl<S: EncodeLabelSet> EncodeMetric for Info<S> {
 impl<S: EncodeLabelSet> TypedMetric for Info<S> {
     const TYPE: MetricType = MetricType::Info;
 }
+
+impl<S: EncodeLabelSet> AdvancedMetric for Info<S> {}
 
 /// Error returned from [`Info::set()`].
 #[derive(Debug)]
@@ -509,18 +519,12 @@ where
 
 impl<S, M, L> EncodeMetric for Family<S, M, L>
 where
-    M: BuildMetric,
+    M: BuildMetric + EncodeMetric + TypedMetric,
     S: Clone + Eq + Hash,
     L: MapLabels<S>,
 {
-    fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
-        for labels in &self.inner.map.keys_cloned() {
-            let metric = self.inner.map.get(labels).unwrap();
-            let mapped_labels = self.labels.map_labels(labels);
-            let encoder = encoder.encode_family(&mapped_labels)?;
-            metric.encode(encoder)?;
-        }
-        Ok(())
+    fn encode(&self, encoder: MetricEncoder<'_>) -> fmt::Result {
+        self.advanced_encode(encoder.into())
     }
 
     fn metric_type(&self) -> MetricType {
@@ -528,8 +532,24 @@ where
     }
 }
 
-impl<S, M: BuildMetric, L> TypedMetric for Family<S, M, L> {
+impl<S, M: BuildMetric + TypedMetric, L> TypedMetric for Family<S, M, L> {
     const TYPE: MetricType = <M as TypedMetric>::TYPE;
+}
+
+impl<S, M, L> AdvancedMetric for Family<S, M, L>
+where
+    M: BuildMetric + EncodeMetric + TypedMetric,
+    S: Clone + Eq + Hash,
+    L: MapLabels<S>,
+{
+    fn advanced_encode(&self, mut encoder: AdvancedMetricEncoder<'_>) -> fmt::Result {
+        for labels in &self.inner.map.keys_cloned() {
+            let metric = self.inner.map.get(labels).unwrap();
+            let mapped_labels = self.labels.map_labels(labels);
+            encoder.encode_family(&mapped_labels, |encoder| metric.encode(encoder))?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
