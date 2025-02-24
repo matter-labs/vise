@@ -19,7 +19,7 @@ impl<S: EncodeLabelSet> prometheus_client::encoding::EncodeLabelSet for LabelSet
 struct GroupedMetric {
     help: &'static str,
     unit: Option<Unit>,
-    instances: Vec<(usize, Box<dyn AdvancedMetric>)>,
+    instances: Vec<(usize, Box<dyn EncodeGroupedMetric>)>,
 }
 
 impl fmt::Debug for GroupedMetric {
@@ -32,7 +32,8 @@ impl fmt::Debug for GroupedMetric {
     }
 }
 
-/// Buffer for metrics in a `MetricsFamily`. Allows collecting
+/// Buffer for metrics in a `MetricsFamily`. Allows collecting metrics from all groups in the family,
+/// so that they can be encoded grouped by metric (as opposed to by the group label set).
 #[derive(Default)]
 pub(crate) struct LabelGroups {
     labels: Vec<Box<dyn EncodeLabelSet>>,
@@ -59,7 +60,7 @@ impl LabelGroups {
         name: &'static str,
         help: &'static str,
         unit: Option<&Unit>,
-        metric: Box<dyn AdvancedMetric>,
+        metric: Box<dyn EncodeGroupedMetric>,
     ) {
         let metric_entry = self
             .metrics_by_name
@@ -89,13 +90,13 @@ impl LabelGroups {
                 grouped_metric.unit.as_ref(),
                 metric.metric_type(),
             )?;
-            let mut metric_encoder = AdvancedMetricEncoder {
+            let mut metric_encoder = GroupedMetricEncoder {
                 inner: metric_encoder,
                 group_labels: &(),
             };
             for (group_labels, instance) in instances {
                 metric_encoder.group_labels = group_labels;
-                instance.advanced_encode(&mut metric_encoder)?;
+                instance.encode_grouped(&mut metric_encoder)?;
             }
         }
         Ok(())
@@ -123,21 +124,21 @@ impl<S: EncodeLabelSet> prometheus_client::encoding::EncodeLabelSet for FullLabe
     }
 }
 
-pub struct AdvancedMetricEncoder<'a> {
+pub struct GroupedMetricEncoder<'a> {
     inner: MetricEncoder<'a>,
     group_labels: &'a dyn EncodeLabelSet,
 }
 
-impl fmt::Debug for AdvancedMetricEncoder<'_> {
+impl fmt::Debug for GroupedMetricEncoder<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("AdvancedMetricEncoder")
+            .debug_struct("GroupedMetricEncoder")
             .field("inner", &self.inner)
             .finish_non_exhaustive()
     }
 }
 
-impl<'a> AdvancedMetricEncoder<'a> {
+impl<'a> GroupedMetricEncoder<'a> {
     pub(crate) fn encode_family<'s>(
         &'s mut self,
         label_set: &'s impl EncodeLabelSet,
@@ -152,9 +153,9 @@ impl<'a> AdvancedMetricEncoder<'a> {
     }
 }
 
-// TODO: docs, better name
-pub trait AdvancedMetric: EncodeMetric {
-    fn advanced_encode(&self, encoder: &mut AdvancedMetricEncoder<'_>) -> fmt::Result {
+/// Encodes a metric inside [a group](crate::MetricsFamily).
+pub trait EncodeGroupedMetric: EncodeMetric {
+    fn encode_grouped(&self, encoder: &mut GroupedMetricEncoder<'_>) -> fmt::Result {
         let labels = LabelSetWrapper(encoder.group_labels);
         let encoder = encoder.inner.encode_family(&labels)?;
         self.encode(encoder)

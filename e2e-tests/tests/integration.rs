@@ -293,6 +293,16 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
         assert_eq!(metadata.unit(), "seconds");
     }
 
+    let metadata = client
+        .metric_metadata()
+        .metric("test_rpc_method_call_latency_seconds")
+        .get()
+        .await?;
+    tracing::info!(?metadata, "Got metadata for grouped histogram");
+    let metadata = &metadata["test_rpc_method_call_latency_seconds"][0];
+    let help = metadata.help();
+    assert!(help.contains("Call latency"), "{help}");
+
     let info_result = client.query("test_package_metadata").get().await?;
     tracing::info!(?info_result, "Got result for query: test_package_metadata");
     let info_vec = info_result
@@ -347,6 +357,20 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
     let labels = histogram_vec
         .iter()
         .map(|iv| iv.metric()["method"].as_str());
+    let labels: HashSet<_> = labels.collect();
+    assert_eq!(labels, HashSet::from(["call", "send_transaction"]));
+
+    let grouped_result = client.query("test_rpc_method_errors").get().await?;
+    tracing::info!(
+        ?grouped_result,
+        "Got result for query: test_rpc_method_errors"
+    );
+    let counter_vec = grouped_result
+        .data()
+        .as_vector()
+        .context("Histogram data is not a vector")?;
+    assert_eq!(counter_vec.len(), 2);
+    let labels = counter_vec.iter().map(|iv| iv.metric()["method"].as_str());
     let labels: HashSet<_> = labels.collect();
     assert_eq!(labels, HashSet::from(["call", "send_transaction"]));
 

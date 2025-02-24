@@ -10,7 +10,7 @@ use prometheus_client::registry::Metric;
 use std::sync::Mutex;
 use std::{collections::HashMap, fmt};
 
-use crate::encoding::{AdvancedMetric, LabelGroups};
+use crate::encoding::{EncodeGroupedMetric, LabelGroups};
 use crate::{
     collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
@@ -368,7 +368,7 @@ impl<'a> MetricsVisitor<'a> {
         name: &'static str,
         help: &'static str,
         unit: Option<Unit>,
-        metric: impl AdvancedMetric + Metric + 'static,
+        metric: impl EncodeGroupedMetric + Metric + 'static,
     ) {
         match &mut self.0 {
             MetricsVisitorInner::Registry(registry) => {
@@ -405,7 +405,7 @@ impl<'a> MetricsVisitor<'a> {
         help: &'static str,
         unit: Option<&Unit>,
         label_groups: Option<&mut LabelGroups>,
-        metric: impl AdvancedMetric + 'static,
+        metric: impl EncodeGroupedMetric + 'static,
     ) -> fmt::Result {
         if let Some(label_groups) = label_groups {
             label_groups.push_metric(name, help, unit, Box::new(metric));

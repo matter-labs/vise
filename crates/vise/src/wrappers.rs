@@ -24,7 +24,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::encoding::{AdvancedMetric, AdvancedMetricEncoder, LabelSetWrapper};
+use crate::encoding::{EncodeGroupedMetric, GroupedMetricEncoder, LabelSetWrapper};
 use crate::{
     buckets::Buckets,
     builder::BuildMetric,
@@ -70,7 +70,7 @@ impl EncodeLabelValue for DurationAsSecs {
     }
 }
 
-impl<N, A> AdvancedMetric for Counter<N, A> where Self: EncodeMetric + TypedMetric {}
+impl<N, A> EncodeGroupedMetric for Counter<N, A> where Self: EncodeMetric + TypedMetric {}
 
 /// Gauge metric.
 ///
@@ -152,7 +152,7 @@ impl<V: GaugeValue> TypedMetric for Gauge<V> {
     const TYPE: MetricType = MetricType::Gauge;
 }
 
-impl<V: GaugeValue> AdvancedMetric for Gauge<V> {}
+impl<V: GaugeValue> EncodeGroupedMetric for Gauge<V> {}
 
 /// Guard for a [`Gauge`] returned by [`Gauge::inc_guard()`]. When dropped, a guard decrements
 /// the gauge by the same value that it was increased by when creating the guard.
@@ -228,7 +228,7 @@ impl<V: HistogramValue> TypedMetric for Histogram<V> {
     const TYPE: MetricType = MetricType::Histogram;
 }
 
-impl<V: HistogramValue> AdvancedMetric for Histogram<V> {}
+impl<V: HistogramValue> EncodeGroupedMetric for Histogram<V> {}
 
 /// Observer of latency for a [`Histogram`].
 #[must_use = "`LatencyObserver` should be `observe()`d"]
@@ -300,7 +300,7 @@ impl<S: EncodeLabelSet> TypedMetric for Info<S> {
     const TYPE: MetricType = MetricType::Info;
 }
 
-impl<S: EncodeLabelSet> AdvancedMetric for Info<S> {}
+impl<S: EncodeLabelSet> EncodeGroupedMetric for Info<S> {}
 
 /// Error returned from [`Info::set()`].
 #[derive(Debug)]
@@ -547,13 +547,13 @@ impl<S, M: BuildMetric + TypedMetric, L> TypedMetric for Family<S, M, L> {
     const TYPE: MetricType = <M as TypedMetric>::TYPE;
 }
 
-impl<S, M, L> AdvancedMetric for Family<S, M, L>
+impl<S, M, L> EncodeGroupedMetric for Family<S, M, L>
 where
     M: BuildMetric + EncodeMetric + TypedMetric,
     S: Clone + Eq + Hash,
     L: MapLabels<S>,
 {
-    fn advanced_encode(&self, encoder: &mut AdvancedMetricEncoder<'_>) -> fmt::Result {
+    fn encode_grouped(&self, encoder: &mut GroupedMetricEncoder<'_>) -> fmt::Result {
         for labels in &self.inner.map.keys_cloned() {
             let metric = self.inner.map.get(labels).unwrap();
             let mapped_labels = self.labels.map_labels(labels);
