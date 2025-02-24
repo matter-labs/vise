@@ -6,7 +6,7 @@ use std::{error, fmt};
 use crate::{
     descriptors::MetricGroupDescriptor,
     registry::{CollectToRegistry, MetricsVisitor, Registry},
-    Global, Metrics,
+    Metrics,
 };
 
 type CollectorFn<M> = Box<dyn Fn() -> M + Send + Sync>;
@@ -115,8 +115,8 @@ impl<M: Metrics> fmt::Debug for LazyGlobalCollector<M> {
 }
 
 impl<M: Metrics> LazyGlobalCollector<M> {
-    pub(crate) fn new(metrics: &'static Global<M>) -> Self {
-        Self(&metrics.0)
+    pub(crate) fn new(metrics: &'static Lazy<M>) -> Self {
+        Self(metrics)
     }
 }
 

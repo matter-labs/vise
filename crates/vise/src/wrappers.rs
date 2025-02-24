@@ -319,7 +319,7 @@ impl<S> fmt::Display for SetInfoError<S> {
     }
 }
 
-struct FamilyInner<S, M: BuildMetric> {
+pub(crate) struct FamilyInner<S, M: BuildMetric> {
     map: FrozenMap<S, Box<M>>,
     builder: M::Builder,
 }
@@ -340,7 +340,7 @@ where
         formatter
             .debug_struct("Family")
             .field("map", &map_snapshot)
-            .field("constructor", &self.builder)
+            .field("builder", &self.builder)
             .finish()
     }
 }
@@ -350,12 +350,27 @@ where
     S: Clone + Eq + Hash,
     M: BuildMetric,
 {
-    fn get_or_create(&self, labels: &S) -> &M {
+    pub(crate) fn new(builder: M::Builder) -> Self {
+        Self {
+            map: FrozenMap::new(),
+            builder,
+        }
+    }
+
+    pub(crate) fn get_or_create(&self, labels: &S) -> &M {
         if let Some(metric) = self.map.get(labels) {
             return metric;
         }
         self.map
             .insert_with(labels.clone(), || Box::new(M::build(self.builder)))
+    }
+
+    pub(crate) fn to_entries(&self) -> impl Iterator<Item = (S, &M)> + '_ {
+        let labels = self.map.keys_cloned();
+        labels.into_iter().map(|key| {
+            let metric = self.map.get(&key).unwrap();
+            (key, metric)
+        })
     }
 }
 
@@ -470,10 +485,7 @@ where
     M: BuildMetric,
 {
     pub(crate) fn new(builder: M::Builder, labels: L) -> Self {
-        let inner = Arc::new(FamilyInner {
-            map: FrozenMap::new(),
-            builder,
-        });
+        let inner = Arc::new(FamilyInner::new(builder));
         Self { inner, labels }
     }
 
@@ -493,14 +505,7 @@ where
     /// This is inefficient and mostly useful for testing purposes.
     #[allow(clippy::missing_panics_doc)] // false positive
     pub fn to_entries(&self) -> HashMap<S, &M> {
-        let labels = self.inner.map.keys_cloned();
-        labels
-            .into_iter()
-            .map(|key| {
-                let metric = self.inner.map.get(&key).unwrap();
-                (key, metric)
-            })
-            .collect()
+        self.inner.to_entries().collect()
     }
 }
 
@@ -523,8 +528,14 @@ where
     S: Clone + Eq + Hash,
     L: MapLabels<S>,
 {
-    fn encode(&self, encoder: MetricEncoder<'_>) -> fmt::Result {
-        self.advanced_encode(encoder.into())
+    fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
+        for labels in &self.inner.map.keys_cloned() {
+            let metric = self.inner.map.get(labels).unwrap();
+            let mapped_labels = LabelSetWrapper(self.labels.map_labels(labels));
+            let encoder = encoder.encode_family(&mapped_labels)?;
+            metric.encode(encoder)?;
+        }
+        Ok(())
     }
 
     fn metric_type(&self) -> MetricType {
@@ -542,7 +553,7 @@ where
     S: Clone + Eq + Hash,
     L: MapLabels<S>,
 {
-    fn advanced_encode(&self, mut encoder: AdvancedMetricEncoder<'_>) -> fmt::Result {
+    fn advanced_encode(&self, encoder: &mut AdvancedMetricEncoder<'_>) -> fmt::Result {
         for labels in &self.inner.map.keys_cloned() {
             let metric = self.inner.map.get(labels).unwrap();
             let mapped_labels = self.labels.map_labels(labels);

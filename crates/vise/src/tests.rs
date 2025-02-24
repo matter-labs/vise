@@ -198,6 +198,74 @@ fn assert_test_metrics(registry: &Registry) {
 }
 
 #[test]
+fn group_registration() {
+    #[derive(Debug, Metrics)]
+    #[metrics(crate = crate, prefix = "rpc_method")]
+    struct MethodMetrics {
+        #[metrics(labels = ["code"])]
+        return_codes: LabeledFamily<i16, Counter>,
+        errors: Counter,
+        #[metrics(buckets = Buckets::LATENCIES)]
+        latency: Histogram<Duration>,
+    }
+
+    #[register]
+    #[metrics(crate = crate)]
+    static GROUP_METRICS: MetricsFamily<Method, MethodMetrics> = MetricsFamily::new();
+
+    let registry = MetricsCollection::default()
+        .filter(|group| group.name == "MethodMetrics")
+        .collect();
+
+    GROUP_METRICS[&Method("eth_call")]
+        .latency
+        .observe(Duration::from_millis(100));
+    GROUP_METRICS[&Method("eth_call")].errors.inc();
+    GROUP_METRICS[&Method("eth_call")].return_codes[&0].inc_by(5);
+    GROUP_METRICS[&Method("eth_call")].return_codes[&3].inc_by(2);
+    GROUP_METRICS[&Method("eth_call")].return_codes[&-2].inc();
+    GROUP_METRICS[&Method("eth_blockNumber")]
+        .latency
+        .observe(Duration::from_millis(200));
+    GROUP_METRICS[&Method("eth_blockNumber")].return_codes[&0].inc_by(7);
+
+    let mut buffer = String::new();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
+    let lines: Vec<_> = buffer.lines().collect();
+
+    // Each metric should be defined exactly once.
+    for metric_name in [
+        "rpc_method_errors",
+        "rpc_method_latency",
+        "rpc_method_return_codes",
+    ] {
+        let type_definition_start = format!("# TYPE {metric_name} ");
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line.starts_with(&type_definition_start))
+                .count(),
+            1
+        );
+    }
+
+    let expected_lines = [
+        "rpc_method_return_codes_total{method=\"eth_call\",code=\"0\"} 5",
+        "rpc_method_return_codes_total{method=\"eth_call\",code=\"-2\"} 1",
+        "rpc_method_return_codes_total{method=\"eth_call\",code=\"3\"} 2",
+        "rpc_method_return_codes_total{method=\"eth_blockNumber\",code=\"0\"} 7",
+        "rpc_method_errors_total{method=\"eth_call\"} 1",
+        "rpc_method_latency_sum{method=\"eth_call\"} 0.1",
+        "rpc_method_latency_count{method=\"eth_call\"} 1",
+        "rpc_method_latency_sum{method=\"eth_blockNumber\"} 0.2",
+        "rpc_method_latency_count{method=\"eth_blockNumber\"} 1",
+    ];
+    for expected_line in expected_lines {
+        assert!(lines.contains(&expected_line), "{lines:#?}");
+    }
+}
+
+#[test]
 fn lazy_metrics_registration() {
     // Metric names clash with `TestMetrics` above, but because we use group filtering in both cases,
     // this is fine.

@@ -3,13 +3,13 @@
 use once_cell::sync::Lazy;
 use std::hash::Hash;
 
-use std::ops;
+use std::{fmt, ops};
 
+use crate::wrappers::FamilyInner;
 use crate::{
     descriptors::MetricGroupDescriptor,
     registry::{CollectToRegistry, MetricsVisitor, Registry},
     traits::EncodeLabelSet,
-    Family,
 };
 
 /// Collection of metrics for a library or application. Should be derived using the corresponding macro.
@@ -35,22 +35,6 @@ impl<M: Metrics> Metrics for Option<M> {
     fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
         if let Some(metrics) = self {
             metrics.visit_metrics(visitor);
-        }
-    }
-}
-
-impl<S, M> Metrics for Family<S, M>
-where
-    S: EncodeLabelSet + Clone + Eq + Hash + Send + Sync + 'static,
-    M: Metrics + Default,
-{
-    const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
-
-    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
-        for (labels, metrics) in self.to_entries() {
-            visitor.push_group_labels(labels);
-            metrics.visit_metrics(visitor);
-            visitor.pop_group_labels();
         }
     }
 }
@@ -87,6 +71,78 @@ impl<M: Metrics> CollectToRegistry for Global<M> {
     }
 
     fn collect_to_registry(&'static self, registry: &mut Registry) {
-        registry.register_global_metrics(self);
+        registry.register_global_metrics(&self.0, false);
+    }
+}
+
+/// Family of [`Metrics`]. Allows applying one or more labels for all contained metrics, as if each of them was enclosed in a `Family`.
+pub struct MetricsFamily<S, M: Metrics + Default>(Lazy<FamilyInner<S, M>>);
+
+impl<S, M> fmt::Debug for MetricsFamily<S, M>
+where
+    S: Clone + Eq + Hash + fmt::Debug,
+    M: Metrics + Default + fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, formatter)
+    }
+}
+
+impl<S, M> Default for MetricsFamily<S, M>
+where
+    S: Clone + Eq + Hash,
+    M: Metrics + Default,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S, M> MetricsFamily<S, M>
+where
+    S: Clone + Eq + Hash,
+    M: Metrics + Default,
+{
+    /// Creates a new metrics family.
+    pub const fn new() -> Self {
+        Self(Lazy::new(|| FamilyInner::new(())))
+    }
+}
+
+impl<S, M> ops::Index<&S> for MetricsFamily<S, M>
+where
+    S: Clone + Eq + Hash,
+    M: Metrics + Default,
+{
+    type Output = M;
+
+    fn index(&self, labels: &S) -> &Self::Output {
+        self.0.get_or_create(labels)
+    }
+}
+
+impl<S, M> Metrics for FamilyInner<S, M>
+where
+    S: EncodeLabelSet + Clone + Eq + Hash + Send + Sync + 'static,
+    M: Metrics + Default,
+{
+    const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
+
+    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
+        visitor.visit_groups(self.to_entries());
+    }
+}
+
+impl<S, M> CollectToRegistry for MetricsFamily<S, M>
+where
+    S: EncodeLabelSet + Clone + Eq + Hash + Send + Sync + 'static,
+    M: Metrics + Default,
+{
+    fn descriptor(&self) -> &'static MetricGroupDescriptor {
+        &M::DESCRIPTOR
+    }
+
+    fn collect_to_registry(&'static self, registry: &mut Registry) {
+        registry.register_global_metrics(&self.0, true);
     }
 }

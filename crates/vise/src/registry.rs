@@ -5,17 +5,18 @@ use prometheus_client::{
     registry::{Registry as RegistryInner, Unit},
 };
 
+use once_cell::sync::Lazy;
 use prometheus_client::registry::Metric;
 use std::sync::Mutex;
 use std::{collections::HashMap, fmt};
 
-use crate::encoding::{AdvancedMetric, AdvancedMetricEncoder, LabelGroups};
+use crate::encoding::{AdvancedMetric, LabelGroups};
 use crate::{
     collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
     format::{Format, PrometheusWrapper},
     traits::EncodeLabelSet,
-    Global, Metrics,
+    Metrics,
 };
 
 impl FullMetricDescriptor {
@@ -245,8 +246,12 @@ impl Registry {
         metrics.visit_metrics(&mut visitor);
     }
 
-    pub(crate) fn register_global_metrics<M: Metrics>(&mut self, metrics: &'static Global<M>) {
-        if self.is_lazy {
+    pub(crate) fn register_global_metrics<M: Metrics>(
+        &mut self,
+        metrics: &'static Lazy<M>,
+        force_lazy: bool,
+    ) {
+        if force_lazy || self.is_lazy {
             self.descriptors.push(&M::DESCRIPTOR);
             let collector = LazyGlobalCollector::new(metrics);
             self.inner.register_collector(Box::new(collector));
@@ -287,7 +292,7 @@ enum MetricsVisitorInner<'a> {
     Registry(&'a mut Registry),
     Collector {
         encoder: Result<DescriptorEncoder<'a>, fmt::Error>,
-        label_groups: LabelGroups,
+        label_groups: Option<LabelGroups>,
     },
 }
 
@@ -299,7 +304,7 @@ impl<'a> MetricsVisitor<'a> {
     pub(crate) fn for_collector(encoder: DescriptorEncoder<'a>) -> Self {
         Self(MetricsVisitorInner::Collector {
             encoder: Ok(encoder),
-            label_groups: LabelGroups::default(),
+            label_groups: None,
         })
     }
 
@@ -310,20 +315,49 @@ impl<'a> MetricsVisitor<'a> {
         }
     }
 
-    pub(crate) fn push_group_labels(&mut self, labels: impl EncodeLabelSet + 'static) {
+    fn label_groups_mut(&mut self) -> Option<&mut LabelGroups> {
         match &mut self.0 {
-            MetricsVisitorInner::Registry(_) => { /* do nothing */ }
-            MetricsVisitorInner::Collector { label_groups, .. } => {
-                label_groups.0.push(Box::new(labels));
-            }
+            MetricsVisitorInner::Registry(_) => None,
+            MetricsVisitorInner::Collector { label_groups, .. } => label_groups.as_mut(),
         }
     }
 
-    pub(crate) fn pop_group_labels(&mut self) {
+    pub(crate) fn visit_groups<'g, S, M>(&mut self, mut groups: impl Iterator<Item = (S, &'g M)>)
+    where
+        S: EncodeLabelSet + 'static,
+        M: Metrics,
+    {
         match &mut self.0 {
-            MetricsVisitorInner::Registry(_) => { /* do nothing */ }
+            MetricsVisitorInner::Registry(_) => {
+                // FIXME: isn't necessarily correct?
+                if let Some((_, metrics)) = groups.next() {
+                    metrics.visit_metrics(self);
+                }
+            }
             MetricsVisitorInner::Collector { label_groups, .. } => {
-                label_groups.0.pop();
+                assert!(label_groups.is_none());
+                *label_groups = Some(LabelGroups::default());
+
+                for (labels, group) in groups {
+                    self.label_groups_mut()
+                        .unwrap()
+                        .push_labels(Box::new(labels));
+                    group.visit_metrics(self);
+                }
+
+                let (label_groups, encoder_res) = match &mut self.0 {
+                    MetricsVisitorInner::Collector {
+                        label_groups,
+                        encoder,
+                    } => (label_groups.take().unwrap(), encoder),
+                    MetricsVisitorInner::Registry(_) => unreachable!(),
+                };
+
+                if let Ok(encoder) = encoder_res {
+                    if let Err(err) = label_groups.encode(encoder) {
+                        *encoder_res = Err(err);
+                    }
+                }
             }
         }
     }
@@ -334,7 +368,7 @@ impl<'a> MetricsVisitor<'a> {
         name: &'static str,
         help: &'static str,
         unit: Option<Unit>,
-        metric: impl Metric + AdvancedMetric,
+        metric: impl AdvancedMetric + Metric + 'static,
     ) {
         match &mut self.0 {
             MetricsVisitorInner::Registry(registry) => {
@@ -354,8 +388,8 @@ impl<'a> MetricsVisitor<'a> {
                         name,
                         help,
                         unit.as_ref(),
-                        label_groups,
-                        &metric,
+                        label_groups.as_mut(),
+                        metric,
                     );
                     if let Err(err) = new_result {
                         *res = Err(err);
@@ -370,16 +404,21 @@ impl<'a> MetricsVisitor<'a> {
         name: &'static str,
         help: &'static str,
         unit: Option<&Unit>,
-        label_groups: &LabelGroups,
-        metric: &impl AdvancedMetric,
+        label_groups: Option<&mut LabelGroups>,
+        metric: impl AdvancedMetric + 'static,
     ) -> fmt::Result {
-        // Append a full stop to `help` to be consistent with registered metrics.
-        let mut help = String::from(help);
-        help.push('.');
+        if let Some(label_groups) = label_groups {
+            label_groups.push_metric(name, help, unit, Box::new(metric));
+            Ok(())
+        } else {
+            // Append a full stop to `help` to be consistent with registered metrics.
+            let mut help = String::from(help);
+            help.push('.');
 
-        let metric_encoder = encoder.encode_descriptor(name, &help, unit, metric.metric_type())?;
-        let metric_encoder = AdvancedMetricEncoder::new(metric_encoder, label_groups);
-        metric.advanced_encode(metric_encoder)
+            let metric_encoder =
+                encoder.encode_descriptor(name, &help, unit, metric.metric_type())?;
+            metric.encode(metric_encoder)
+        }
     }
 }
 

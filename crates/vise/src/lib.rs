@@ -414,7 +414,7 @@ pub use crate::{
     builder::{BuildMetric, MetricBuilder},
     collector::{BeforeScrapeError, Collector},
     format::Format,
-    metrics::{Global, Metrics},
+    metrics::{Global, Metrics, MetricsFamily},
     registry::{
         CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
         METRICS_REGISTRATIONS,

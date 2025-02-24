@@ -24,6 +24,12 @@ pub trait EncodeLabelSet {
     fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result;
 }
 
+impl EncodeLabelSet for () {
+    fn encode(&self, _encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
+        Ok(())
+    }
+}
+
 impl<T: EncodeLabelSet + ?Sized> EncodeLabelSet for &T {
     fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
         (**self).encode(encoder)
