@@ -117,9 +117,9 @@ where
 }
 
 impl<M: Metrics + Default> BuildMetric for M {
-    type Builder = (); // FIXME: ??
+    type Builder = ();
 
-    fn build(_builder: Self::Builder) -> Self {
+    fn build((): Self::Builder) -> Self {
         Self::default()
     }
 }

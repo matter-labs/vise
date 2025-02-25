@@ -6,16 +6,14 @@ use prometheus_client::{
 };
 
 use once_cell::sync::Lazy;
-use prometheus_client::registry::Metric;
 use std::sync::Mutex;
 use std::{collections::HashMap, fmt};
 
-use crate::encoding::{EncodeGroupedMetric, LabelGroups};
+use crate::encoding::GroupedMetric;
 use crate::{
     collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
     format::{Format, PrometheusWrapper},
-    traits::EncodeLabelSet,
     Metrics,
 };
 
@@ -242,8 +240,7 @@ impl Registry {
     /// Registers a group of metrics.
     pub fn register_metrics<M: Metrics>(&mut self, metrics: &M) {
         self.descriptors.push(&M::DESCRIPTOR);
-        let mut visitor = MetricsVisitor(MetricsVisitorInner::Registry(self));
-        metrics.visit_metrics(&mut visitor);
+        metrics.visit_metrics(self);
     }
 
     pub(crate) fn register_global_metrics<M: Metrics>(
@@ -287,137 +284,68 @@ impl Registry {
     }
 }
 
-#[derive(Debug)]
-enum MetricsVisitorInner<'a> {
-    Registry(&'a mut Registry),
-    Collector {
-        encoder: Result<DescriptorEncoder<'a>, fmt::Error>,
-        label_groups: Option<LabelGroups>,
-    },
-}
-
-/// Visitor for a group of metrics in a [`Registry`].
-#[derive(Debug)]
-pub struct MetricsVisitor<'a>(MetricsVisitorInner<'a>);
-
-impl<'a> MetricsVisitor<'a> {
-    pub(crate) fn for_collector(encoder: DescriptorEncoder<'a>) -> Self {
-        Self(MetricsVisitorInner::Collector {
-            encoder: Ok(encoder),
-            label_groups: None,
-        })
-    }
-
-    pub(crate) fn check(self) -> fmt::Result {
-        match self.0 {
-            MetricsVisitorInner::Registry(_) => Ok(()),
-            MetricsVisitorInner::Collector { encoder, .. } => encoder.map(drop),
-        }
-    }
-
-    fn label_groups_mut(&mut self) -> Option<&mut LabelGroups> {
-        match &mut self.0 {
-            MetricsVisitorInner::Registry(_) => None,
-            MetricsVisitorInner::Collector { label_groups, .. } => label_groups.as_mut(),
-        }
-    }
-
-    pub(crate) fn visit_groups<'g, S, M>(&mut self, mut groups: impl Iterator<Item = (S, &'g M)>)
-    where
-        S: EncodeLabelSet + 'static,
-        M: Metrics,
-    {
-        match &mut self.0 {
-            MetricsVisitorInner::Registry(_) => {
-                // FIXME: isn't necessarily correct?
-                if let Some((_, metrics)) = groups.next() {
-                    metrics.visit_metrics(self);
-                }
-            }
-            MetricsVisitorInner::Collector { label_groups, .. } => {
-                assert!(label_groups.is_none());
-                *label_groups = Some(LabelGroups::default());
-
-                for (labels, group) in groups {
-                    self.label_groups_mut()
-                        .unwrap()
-                        .push_labels(Box::new(labels));
-                    group.visit_metrics(self);
-                }
-
-                let (label_groups, encoder_res) = match &mut self.0 {
-                    MetricsVisitorInner::Collector {
-                        label_groups,
-                        encoder,
-                    } => (label_groups.take().unwrap(), encoder),
-                    MetricsVisitorInner::Registry(_) => unreachable!(),
-                };
-
-                if let Ok(encoder) = encoder_res {
-                    if let Err(err) = label_groups.encode(encoder) {
-                        *encoder_res = Err(err);
-                    }
-                }
-            }
-        }
-    }
-
-    /// Registers a metric of family of metrics.
-    pub fn push_metric(
+pub trait MetricsVisitor {
+    fn visit_metric(
         &mut self,
         name: &'static str,
         help: &'static str,
         unit: Option<Unit>,
-        metric: impl EncodeGroupedMetric + Metric + 'static,
-    ) {
-        match &mut self.0 {
-            MetricsVisitorInner::Registry(registry) => {
-                if let Some(unit) = unit {
-                    registry.inner.register_with_unit(name, help, unit, metric);
-                } else {
-                    registry.inner.register(name, help, metric);
-                }
-            }
-            MetricsVisitorInner::Collector {
-                encoder: res,
-                label_groups,
-            } => {
-                if let Ok(encoder) = res {
-                    let new_result = Self::encode_metric(
-                        encoder,
-                        name,
-                        help,
-                        unit.as_ref(),
-                        label_groups.as_mut(),
-                        metric,
-                    );
-                    if let Err(err) = new_result {
-                        *res = Err(err);
-                    }
-                }
-            }
-        }
-    }
+        metric: Box<dyn GroupedMetric>,
+    );
+}
 
-    fn encode_metric(
-        encoder: &mut DescriptorEncoder<'_>,
+impl MetricsVisitor for Registry {
+    fn visit_metric(
+        &mut self,
         name: &'static str,
         help: &'static str,
-        unit: Option<&Unit>,
-        label_groups: Option<&mut LabelGroups>,
-        metric: impl EncodeGroupedMetric + 'static,
-    ) -> fmt::Result {
-        if let Some(label_groups) = label_groups {
-            label_groups.push_metric(name, help, unit, Box::new(metric));
-            Ok(())
+        unit: Option<Unit>,
+        metric: Box<dyn GroupedMetric>,
+    ) {
+        if let Some(unit) = unit {
+            self.inner.register_with_unit(name, help, unit, metric);
         } else {
+            self.inner.register(name, help, metric);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct MetricsEncoder<'a> {
+    inner: Result<DescriptorEncoder<'a>, fmt::Error>,
+}
+
+impl MetricsEncoder<'_> {
+    pub(crate) fn check(self) -> fmt::Result {
+        self.inner.map(drop)
+    }
+}
+
+impl<'a> From<DescriptorEncoder<'a>> for MetricsEncoder<'a> {
+    fn from(inner: DescriptorEncoder<'a>) -> Self {
+        Self { inner: Ok(inner) }
+    }
+}
+
+impl MetricsVisitor for MetricsEncoder<'_> {
+    fn visit_metric(
+        &mut self,
+        name: &'static str,
+        help: &'static str,
+        unit: Option<Unit>,
+        metric: Box<dyn GroupedMetric>,
+    ) {
+        if let Ok(encoder) = &mut self.inner {
             // Append a full stop to `help` to be consistent with registered metrics.
             let mut help = String::from(help);
             help.push('.');
 
-            let metric_encoder =
-                encoder.encode_descriptor(name, &help, unit, metric.metric_type())?;
-            metric.encode(metric_encoder)
+            let new_result = encoder
+                .encode_descriptor(name, &help, unit.as_ref(), metric.metric_type())
+                .and_then(|encoder| metric.encode(encoder));
+            if let Err(err) = new_result {
+                self.inner = Err(err);
+            }
         }
     }
 }

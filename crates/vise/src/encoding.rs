@@ -1,7 +1,8 @@
 use prometheus_client::encoding::{
     DescriptorEncoder, EncodeMetric, LabelSetEncoder, MetricEncoder,
 };
-use prometheus_client::registry::Unit;
+use prometheus_client::metrics::MetricType;
+use prometheus_client::registry::{Metric, Unit};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -16,13 +17,13 @@ impl<S: EncodeLabelSet> prometheus_client::encoding::EncodeLabelSet for LabelSet
     }
 }
 
-struct GroupedMetric {
+struct GroupedMetricInstances {
     help: &'static str,
     unit: Option<Unit>,
     instances: Vec<(usize, Box<dyn EncodeGroupedMetric>)>,
 }
 
-impl fmt::Debug for GroupedMetric {
+impl fmt::Debug for GroupedMetricInstances {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("GroupedMetric")
@@ -37,7 +38,7 @@ impl fmt::Debug for GroupedMetric {
 #[derive(Default)]
 pub(crate) struct LabelGroups {
     labels: Vec<Box<dyn EncodeLabelSet>>,
-    metrics_by_name: HashMap<&'static str, GroupedMetric>,
+    metrics_by_name: HashMap<&'static str, GroupedMetricInstances>,
 }
 
 impl fmt::Debug for LabelGroups {
@@ -62,14 +63,14 @@ impl LabelGroups {
         unit: Option<&Unit>,
         metric: Box<dyn EncodeGroupedMetric>,
     ) {
-        let metric_entry = self
-            .metrics_by_name
-            .entry(name)
-            .or_insert_with(|| GroupedMetric {
-                help,
-                unit: unit.cloned(),
-                instances: vec![],
-            });
+        let metric_entry =
+            self.metrics_by_name
+                .entry(name)
+                .or_insert_with(|| GroupedMetricInstances {
+                    help,
+                    unit: unit.cloned(),
+                    instances: vec![],
+                });
         let current_group_idx = self.labels.len() - 1;
         metric_entry.instances.push((current_group_idx, metric));
     }
@@ -153,11 +154,27 @@ impl<'a> GroupedMetricEncoder<'a> {
     }
 }
 
+// FIXME: rework
 /// Encodes a metric inside [a group](crate::MetricsFamily).
 pub trait EncodeGroupedMetric: EncodeMetric {
     fn encode_grouped(&self, encoder: &mut GroupedMetricEncoder<'_>) -> fmt::Result {
         let labels = LabelSetWrapper(encoder.group_labels);
         let encoder = encoder.inner.encode_family(&labels)?;
         self.encode(encoder)
+    }
+}
+
+/// FIXME
+pub trait GroupedMetric: EncodeGroupedMetric + Metric {}
+
+impl<T> GroupedMetric for T where T: EncodeGroupedMetric + Metric {}
+
+impl EncodeMetric for Box<dyn GroupedMetric> {
+    fn encode(&self, encoder: MetricEncoder<'_>) -> fmt::Result {
+        (**self).encode(encoder)
+    }
+
+    fn metric_type(&self) -> MetricType {
+        (**self).metric_type()
     }
 }

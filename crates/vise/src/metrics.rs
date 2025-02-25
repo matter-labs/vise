@@ -18,13 +18,13 @@ pub trait Metrics: 'static + Send + Sync {
     const DESCRIPTOR: MetricGroupDescriptor;
 
     #[doc(hidden)] // implementation detail
-    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>);
+    fn visit_metrics(&self, visitor: &mut dyn MetricsVisitor);
 }
 
 impl<M: Metrics> Metrics for &'static M {
     const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
 
-    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
+    fn visit_metrics(&self, visitor: &mut dyn MetricsVisitor) {
         (**self).visit_metrics(visitor);
     }
 }
@@ -32,7 +32,7 @@ impl<M: Metrics> Metrics for &'static M {
 impl<M: Metrics> Metrics for Option<M> {
     const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
 
-    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
+    fn visit_metrics(&self, visitor: &mut dyn MetricsVisitor) {
         if let Some(metrics) = self {
             metrics.visit_metrics(visitor);
         }
@@ -128,8 +128,22 @@ where
 {
     const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
 
-    fn visit_metrics(&self, visitor: &mut MetricsVisitor<'_>) {
-        visitor.visit_groups(self.to_entries());
+    fn visit_metrics(&self, _visitor: &mut dyn MetricsVisitor) {
+        todo!("collect into groups, then visit")
+    }
+}
+
+impl<S, M> Metrics for MetricsFamily<S, M>
+where
+    S: EncodeLabelSet + Clone + Eq + Hash + Send + Sync + 'static,
+    M: Metrics + Default,
+{
+    const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
+
+    fn visit_metrics(&self, visitor: &mut dyn MetricsVisitor) {
+        if let Some(inner) = Lazy::get(&self.0) {
+            inner.visit_metrics(visitor);
+        }
     }
 }
 

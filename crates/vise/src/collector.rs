@@ -3,9 +3,10 @@ use prometheus_client::{collector::Collector as CollectorTrait, encoding::Descri
 
 use std::{error, fmt};
 
+use crate::registry::MetricsEncoder;
 use crate::{
     descriptors::MetricGroupDescriptor,
-    registry::{CollectToRegistry, MetricsVisitor, Registry},
+    registry::{CollectToRegistry, Registry},
     Metrics,
 };
 
@@ -83,7 +84,7 @@ impl<M: Metrics> Collector<M> {
 impl<M: Metrics> CollectorTrait for &'static Collector<M> {
     fn encode(&self, encoder: DescriptorEncoder<'_>) -> fmt::Result {
         if let Some(hook) = self.inner.get() {
-            let mut visitor = MetricsVisitor::for_collector(encoder);
+            let mut visitor = MetricsEncoder::from(encoder);
             hook().visit_metrics(&mut visitor);
             visitor.check()
         } else {
@@ -123,7 +124,7 @@ impl<M: Metrics> LazyGlobalCollector<M> {
 impl<M: Metrics> CollectorTrait for LazyGlobalCollector<M> {
     fn encode(&self, encoder: DescriptorEncoder<'_>) -> fmt::Result {
         if let Some(metrics) = Lazy::get(self.0) {
-            let mut visitor = MetricsVisitor::for_collector(encoder);
+            let mut visitor = MetricsEncoder::from(encoder);
             metrics.visit_metrics(&mut visitor);
             visitor.check()
         } else {

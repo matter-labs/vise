@@ -196,11 +196,11 @@ impl MetricsField {
         };
 
         quote! {
-            visitor.push_metric(
+            visitor.visit_metric(
                 #name_str,
                 #docs,
                 #unit,
-                core::clone::Clone::clone(&self.#name),
+                ::std::boxed::Box::new(::core::clone::Clone::clone(&self.#name)),
             );
         }
     }
@@ -339,7 +339,7 @@ impl MetricsImpl {
             impl #cr::Metrics for #name {
                 const DESCRIPTOR: #cr::descriptors::MetricGroupDescriptor = #descriptor;
 
-                fn visit_metrics(&self, visitor: &mut #cr::MetricsVisitor<'_>) {
+                fn visit_metrics(&self, visitor: &mut dyn #cr::MetricsVisitor) {
                     #(#visit_fields;)*
                 }
             }
