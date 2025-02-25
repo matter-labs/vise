@@ -96,7 +96,7 @@ impl Default for MetricsCollection {
 impl MetricsCollection {
     /// Specifies that metrics should be lazily exported.
     ///
-    /// By default, [`Global`] metrics are eagerly collected into a [`Registry`]; i.e., metrics will get exported
+    /// By default, [`Global`](crate::Global) metrics are eagerly collected into a [`Registry`]; i.e., metrics will get exported
     /// even if they were never modified by the app / library logic. This is *usually* fine (e.g.,
     /// this allows getting all metrics metadata on the first scrape), but sometimes you may want to
     /// export only metrics touched by the app / library logic. E.g., you have a single app binary
@@ -128,7 +128,7 @@ impl MetricsCollection {
 }
 
 impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
-    /// Creates a registry with all [`register`](crate::register)ed [`Global`] metrics
+    /// Creates a registry with all [`register`](crate::register)ed [`Global`](crate::Global) metrics
     /// and [`Collector`]s. If a filtering predicate [was provided](MetricsCollection::filter()),
     /// only metrics satisfying this function will be collected.
     #[allow(clippy::missing_panics_doc)]
@@ -284,9 +284,10 @@ impl Registry {
     }
 }
 
-/// FIXME
+/// Visitor for [`Metrics`].
 pub trait MetricsVisitor {
-    /// FIXME
+    /// Visits a specific metric instance.
+    #[doc(hidden)] // implementation detail
     fn visit_metric(
         &mut self,
         name: &'static str,
@@ -353,7 +354,7 @@ impl MetricsVisitor for MetricsEncoder<'_> {
 }
 
 /// Collects metrics from this type to registry. This is used by the [`register`](crate::register)
-/// macro to handle registration of [`Global`] metrics and [`Collector`]s.
+/// macro to handle registration of [`Global`](crate::Global) metrics and [`Collector`]s.
 pub trait CollectToRegistry: 'static + Send + Sync {
     #[doc(hidden)] // implementation detail
     fn descriptor(&self) -> &'static MetricGroupDescriptor;

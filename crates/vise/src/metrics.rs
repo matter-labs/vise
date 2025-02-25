@@ -78,6 +78,49 @@ impl<M: Metrics> CollectToRegistry for Global<M> {
 }
 
 /// Family of [`Metrics`]. Allows applying one or more labels for all contained metrics, as if each of them was enclosed in a `Family`.
+///
+/// # Examples
+///
+/// ```
+/// # use std::time::Duration;
+/// # use derive_more::Display;
+/// use vise::{
+///     Buckets, Counter, Histogram, Metrics, MetricsFamily,
+///     EncodeLabelValue, EncodeLabelSet,
+/// };
+///
+/// #[derive(Debug, Metrics)]
+/// #[metrics(prefix = "rpc_method")]
+/// struct MethodMetrics {
+///     errors: Counter,
+///     #[metrics(buckets = Buckets::LATENCIES)]
+///     latency: Histogram<Duration>,
+/// }
+///
+/// #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash)]
+/// #[derive(EncodeLabelValue, EncodeLabelSet)]
+/// #[metrics(label = "method")]
+/// struct Method(&'static str);
+///
+/// #[vise::register]
+/// static METRICS: MetricsFamily<Method, MethodMetrics> = MetricsFamily::new();
+///
+/// // Metrics can be accessed via indexing:
+/// METRICS[&Method("eth_call")].errors.inc();
+/// METRICS[&Method("eth_blockNumber")].latency.observe(Duration::from_millis(100));
+///
+/// // Metric instances can be stashed in a struct if needed; they have static lifetime.
+/// let call_metrics: &'static MethodMetrics = &METRICS[&Method("eth_call")];
+/// call_metrics.errors.inc_by(2);
+///
+/// let registry = vise::MetricsCollection::default().collect();
+/// let mut buffer = String::new();
+/// registry.encode(&mut buffer, vise::Format::OpenMetrics)?;
+/// assert!(buffer
+///     .lines()
+///     .any(|line| line == r#"rpc_method_errors_total{method="eth_call"} 3"#));
+/// # Ok::<_, std::fmt::Error>(())
+/// ```
 pub struct MetricsFamily<S, M: Metrics + Default>(Lazy<FamilyInner<S, M>>);
 
 impl<S, M> fmt::Debug for MetricsFamily<S, M>

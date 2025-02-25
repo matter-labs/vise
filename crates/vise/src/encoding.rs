@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::traits::EncodeLabelSet;
 
+/// Wraps a label set so that it can be used in the `prometheus_client` library.
 #[derive(Debug)]
 pub(crate) struct LabelSetWrapper<S>(pub S);
 
@@ -49,10 +50,14 @@ impl EncodeMetric for LabeledMetric {
 impl EncodeGroupedMetric for LabeledMetric {
     fn encode_grouped(
         &self,
-        _group_labels: &dyn EncodeLabelSet,
-        _encoder: &mut MetricEncoder<'_>,
+        group_labels: &dyn EncodeLabelSet,
+        encoder: &mut MetricEncoder<'_>,
     ) -> fmt::Result {
-        todo!("compose labels")
+        for (labels, metric) in &self.0 {
+            let all_labels = FullLabelSet::new(group_labels, labels.as_ref());
+            metric.as_ref().encode_grouped(&all_labels, encoder)?;
+        }
+        Ok(())
     }
 }
 
@@ -143,15 +148,22 @@ impl<'a> FullLabelSet<'a> {
     }
 }
 
+impl EncodeLabelSet for FullLabelSet<'_> {
+    fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
+        self.group_labels.encode(encoder)?;
+        self.inner.encode(encoder)
+    }
+}
+
 impl prometheus_client::encoding::EncodeLabelSet for FullLabelSet<'_> {
     fn encode(&self, mut encoder: LabelSetEncoder<'_>) -> fmt::Result {
-        self.group_labels.encode(&mut encoder)?;
-        self.inner.encode(&mut encoder)
+        EncodeLabelSet::encode(self, &mut encoder)
     }
 }
 
 /// Encodes a metric inside [a group](crate::MetricsFamily).
 pub trait EncodeGroupedMetric: EncodeMetric {
+    /// Performs encoding.
     fn encode_grouped(
         &self,
         labels: &dyn EncodeLabelSet,
@@ -162,7 +174,7 @@ pub trait EncodeGroupedMetric: EncodeMetric {
     }
 }
 
-/// FIXME
+/// [`EncodeGroupedMetric`] with additional constraints, such as `Send`, `Sync` and `'static` lifetime.
 pub trait GroupedMetric: EncodeGroupedMetric + Metric {}
 
 impl<T> GroupedMetric for T where T: EncodeGroupedMetric + Metric {}

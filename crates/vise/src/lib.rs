@@ -16,6 +16,7 @@
 //!   metric data in the OpenMetrics text format. Registration can be automated using the [`register`]
 //!   attribute, but it can be manual as well.
 //! - In order to allow for metrics computed during scraping, you can use [`Collector`].
+//! - To share one or more labels for a group of metrics, wrap them in a [`MetricsFamily`].
 //!
 //! # Examples
 //!
@@ -241,7 +242,7 @@ pub use vise_macros::EncodeLabelValue;
 ///
 /// `Option` fields are skipped by default if they are `None` (i.e., they use `skip = Option::is_none`).
 ///
-/// [`EncodeLabelSet`]: trait@prometheus_client::encoding::EncodeLabelSet
+/// [`EncodeLabelSet`]: crate::traits::EncodeLabelSet
 ///
 /// ## `unit`
 ///
