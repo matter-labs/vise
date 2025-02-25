@@ -2,7 +2,7 @@ error[E0271]: type mismatch resolving `<Histogram<u64> as BuildMetric>::Builder 
  --> tests/ui/metrics/missing_buckets.rs:6:16
   |
 6 |     histogram: Histogram<u64>,
-  |                ^^^^^^^^^ expected `MetricBuilder<Buckets>`, found `MetricBuilder`
+  |                ^^^^^^^^^ expected `MetricBuilder`, found `MetricBuilder<Buckets>`
   |
-  = note: expected struct `MetricBuilder<Buckets>`
-             found struct `MetricBuilder<()>`
+  = note: expected struct `MetricBuilder<()>`
+             found struct `MetricBuilder<Buckets>`
