@@ -1,5 +1,13 @@
 //! Integration testing for `vise` exporter.
 
+use std::{
+    collections::HashSet,
+    net::SocketAddr,
+    path::Path,
+    process::{Command as StdCommand, Stdio},
+    time::{Duration, Instant},
+};
+
 use anyhow::Context as _;
 use assert_matches::assert_matches;
 use prometheus_http_query::{response::MetricType, Client, TargetState};
@@ -10,14 +18,6 @@ use tokio::{
     sync::Mutex,
 };
 use tracing::metadata::LevelFilter;
-
-use std::{
-    collections::HashSet,
-    net::SocketAddr,
-    path::Path,
-    process::{Command as StdCommand, Stdio},
-    time::{Duration, Instant},
-};
 
 const PROMETHEUS_CONFIG: &str = r#"
 global:

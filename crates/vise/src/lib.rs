@@ -122,97 +122,43 @@
 #![allow(clippy::must_use_candidate, clippy::module_name_repetitions)]
 
 pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
-
-/// Derives the [`EncodeLabelValue`] trait for a type, which encodes a metric label value.
+/// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
+/// into registries instantiated using [`MetricsCollection`].
 ///
-/// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
-/// The macro can be configured using `#[metrics()]` attributes.
-///
-/// # Container attributes
-///
-/// ## `format`
-///
-/// **Type:** string
-///
-/// **Default value:** `{}`
-///
-/// Specifies the format for the value as used in the `format!` macro etc. when encoding it to
-/// a label value. For example, `{}` means using [`Display`](std::fmt::Display).
-///
-/// [`EncodeLabelValue`]: trait@prometheus_client::encoding::EncodeLabelValue
-///
-/// ## `rename_all`
-///
-/// **Type:** string; one of `lowercase`, `UPPERCASE`, `camelCase`, `snake_case`, `SCREAMING_SNAKE_CASE`,
-/// `kebab-case`, `SCREAMING-KEBAB-CASE`
-///
-/// Specifies how enum variant names should be transformed into label values. This attribute
-/// can only be placed on enums in which all variants don't have fields (aka C-style enums).
-/// Mutually exclusive with the `format` attribute.
-///
-/// Caveats:
-///
-/// - `rename_all` assumes that original variant names are in `PascalCase` (i.e., follow Rust naming conventions).
-/// - `rename_all` requires original variant names to consist of ASCII chars.
-/// - Each letter of capitalized acronyms (e.g., "HTTP" in `HTTPServer`) is treated as a separate word.
-///   E.g., `rename_all = "snake_case"` will rename `HTTPServer` to `h_t_t_p_server`.
-///   Note that [it is recommended][clippy-acronyms] to not capitalize acronyms (i.e., use `HttpServer`).
-/// - No spacing is inserted before numbers or other non-letter chars. E.g., `rename_all = "snake_case"`
-///   will rename `Status500` to `status500`, not to `status_500`.
-///
-/// # Variant attributes
-///
-/// ## `name`
-///
-/// **Type:** string
-///
-/// Specifies the name override for a particular enum variant when used with the `rename_all` attribute
-/// described above.
-///
-/// [clippy-acronyms]: https://rust-lang.github.io/rust-clippy/master/index.html#/upper_case_acronyms
+/// This macro must be placed on a static item of a type implementing [`CollectToRegistry`].
 ///
 /// # Examples
 ///
-/// ## Default format
-///
-/// Label value using the default `Display` formatting; note that `Display` itself is derived.
+/// ## Usage with global metrics
 ///
 /// ```
-/// use derive_more::Display;
-/// use vise::EncodeLabelValue;
+/// use vise::{Gauge, Global, Metrics};
 ///
-/// #[derive(Debug, Display, EncodeLabelValue)]
-/// struct Method(&'static str);
-/// ```
-///
-/// ## Custom format
-///
-/// Label value using `Hex` formatting with `0` padding and `0x` prepended.
-///
-/// ```
-/// # use derive_more::LowerHex;
-/// # use vise::EncodeLabelValue;
-/// #[derive(Debug, LowerHex, EncodeLabelValue)]
-/// #[metrics(format = "0x{:02x}")]
-/// struct ResponseType(u8);
-/// ```
-///
-/// ## Using `rename_all` on C-style enum
-///
-/// ```
-/// # use derive_more::LowerHex;
-/// # use vise::EncodeLabelValue;
-/// #[derive(Debug, EncodeLabelValue)]
-/// #[metrics(rename_all = "snake_case")]
-/// enum Database {
-///     Postgres, // renamed to "postgres"
-///     MySql, // renamed to "my_sql"
-///     #[metrics(name = "rocksdb")] // explicitly overrides the name
-///     RocksDB,
+/// #[derive(Debug, Metrics)]
+/// #[metrics(prefix = "test")]
+/// pub(crate) struct TestMetrics {
+///     gauge: Gauge,
 /// }
+///
+/// #[vise::register]
+/// static TEST_METRICS: Global<TestMetrics> = Global::new();
 /// ```
-pub use vise_macros::EncodeLabelValue;
-
+///
+/// ## Usage with collectors
+///
+/// ```
+/// use vise::{Collector, Gauge, Global, Metrics};
+///
+/// #[derive(Debug, Metrics)]
+/// #[metrics(prefix = "dynamic")]
+/// pub(crate) struct DynamicMetrics {
+///     gauge: Gauge,
+/// }
+///
+/// #[vise::register]
+/// static TEST_COLLECTOR: Collector<DynamicMetrics> = Collector::new();
+/// ```
+pub use vise_macros::register;
 /// Derives the [`EncodeLabelSet`] trait for a type, which encodes a set of metric labels.
 ///
 /// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
@@ -306,7 +252,95 @@ pub use vise_macros::EncodeLabelValue;
 /// // { version="0.1.0", request_timeout_seconds="0.1", buffer_capacity="1024" }
 /// ```
 pub use vise_macros::EncodeLabelSet;
-
+/// Derives the [`EncodeLabelValue`] trait for a type, which encodes a metric label value.
+///
+/// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
+/// The macro can be configured using `#[metrics()]` attributes.
+///
+/// # Container attributes
+///
+/// ## `format`
+///
+/// **Type:** string
+///
+/// **Default value:** `{}`
+///
+/// Specifies the format for the value as used in the `format!` macro etc. when encoding it to
+/// a label value. For example, `{}` means using [`Display`](std::fmt::Display).
+///
+/// [`EncodeLabelValue`]: trait@prometheus_client::encoding::EncodeLabelValue
+///
+/// ## `rename_all`
+///
+/// **Type:** string; one of `lowercase`, `UPPERCASE`, `camelCase`, `snake_case`, `SCREAMING_SNAKE_CASE`,
+/// `kebab-case`, `SCREAMING-KEBAB-CASE`
+///
+/// Specifies how enum variant names should be transformed into label values. This attribute
+/// can only be placed on enums in which all variants don't have fields (aka C-style enums).
+/// Mutually exclusive with the `format` attribute.
+///
+/// Caveats:
+///
+/// - `rename_all` assumes that original variant names are in `PascalCase` (i.e., follow Rust naming conventions).
+/// - `rename_all` requires original variant names to consist of ASCII chars.
+/// - Each letter of capitalized acronyms (e.g., "HTTP" in `HTTPServer`) is treated as a separate word.
+///   E.g., `rename_all = "snake_case"` will rename `HTTPServer` to `h_t_t_p_server`.
+///   Note that [it is recommended][clippy-acronyms] to not capitalize acronyms (i.e., use `HttpServer`).
+/// - No spacing is inserted before numbers or other non-letter chars. E.g., `rename_all = "snake_case"`
+///   will rename `Status500` to `status500`, not to `status_500`.
+///
+/// # Variant attributes
+///
+/// ## `name`
+///
+/// **Type:** string
+///
+/// Specifies the name override for a particular enum variant when used with the `rename_all` attribute
+/// described above.
+///
+/// [clippy-acronyms]: https://rust-lang.github.io/rust-clippy/master/index.html#/upper_case_acronyms
+///
+/// # Examples
+///
+/// ## Default format
+///
+/// Label value using the default `Display` formatting; note that `Display` itself is derived.
+///
+/// ```
+/// use derive_more::Display;
+/// use vise::EncodeLabelValue;
+///
+/// #[derive(Debug, Display, EncodeLabelValue)]
+/// struct Method(&'static str);
+/// ```
+///
+/// ## Custom format
+///
+/// Label value using `Hex` formatting with `0` padding and `0x` prepended.
+///
+/// ```
+/// # use derive_more::LowerHex;
+/// # use vise::EncodeLabelValue;
+/// #[derive(Debug, LowerHex, EncodeLabelValue)]
+/// #[metrics(format = "0x{:02x}")]
+/// struct ResponseType(u8);
+/// ```
+///
+/// ## Using `rename_all` on C-style enum
+///
+/// ```
+/// # use derive_more::LowerHex;
+/// # use vise::EncodeLabelValue;
+/// #[derive(Debug, EncodeLabelValue)]
+/// #[metrics(rename_all = "snake_case")]
+/// enum Database {
+///     Postgres, // renamed to "postgres"
+///     MySql, // renamed to "my_sql"
+///     #[metrics(name = "rocksdb")] // explicitly overrides the name
+///     RocksDB,
+/// }
+/// ```
+pub use vise_macros::EncodeLabelValue;
 /// Derives the [`Metrics`](trait@Metrics) trait for a type.
 ///
 /// This macro must be placed on a struct with named fields and with no generics (lifetimes, type params
@@ -351,43 +385,21 @@ pub use vise_macros::EncodeLabelSet;
 /// See crate-level docs and other crate docs for the examples of usage.
 pub use vise_macros::Metrics;
 
-/// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
-/// into registries instantiated using [`MetricsCollection`].
-///
-/// This macro must be placed on a static item of a type implementing [`CollectToRegistry`].
-///
-/// # Examples
-///
-/// ## Usage with global metrics
-///
-/// ```
-/// use vise::{Gauge, Global, Metrics};
-///
-/// #[derive(Debug, Metrics)]
-/// #[metrics(prefix = "test")]
-/// pub(crate) struct TestMetrics {
-///     gauge: Gauge,
-/// }
-///
-/// #[vise::register]
-/// static TEST_METRICS: Global<TestMetrics> = Global::new();
-/// ```
-///
-/// ## Usage with collectors
-///
-/// ```
-/// use vise::{Collector, Gauge, Global, Metrics};
-///
-/// #[derive(Debug, Metrics)]
-/// #[metrics(prefix = "dynamic")]
-/// pub(crate) struct DynamicMetrics {
-///     gauge: Gauge,
-/// }
-///
-/// #[vise::register]
-/// static TEST_COLLECTOR: Collector<DynamicMetrics> = Collector::new();
-/// ```
-pub use vise_macros::register;
+pub use crate::{
+    buckets::Buckets,
+    builder::{BuildMetric, MetricBuilder},
+    collector::{BeforeScrapeError, Collector},
+    format::Format,
+    metrics::{Global, Metrics, MetricsFamily},
+    registry::{
+        CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
+        METRICS_REGISTRATIONS,
+    },
+    wrappers::{
+        DurationAsSecs, Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily,
+        LatencyObserver, SetInfoError,
+    },
+};
 
 #[doc(hidden)] // only used by the proc macros
 pub mod _reexports {
@@ -409,22 +421,6 @@ pub mod traits;
 #[doc(hidden)]
 pub mod validation;
 mod wrappers;
-
-pub use crate::{
-    buckets::Buckets,
-    builder::{BuildMetric, MetricBuilder},
-    collector::{BeforeScrapeError, Collector},
-    format::Format,
-    metrics::{Global, Metrics, MetricsFamily},
-    registry::{
-        CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
-        METRICS_REGISTRATIONS,
-    },
-    wrappers::{
-        DurationAsSecs, Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily,
-        LatencyObserver, SetInfoError,
-    },
-};
 
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");

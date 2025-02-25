@@ -1,13 +1,5 @@
 //! `MetricsExporter` and closely related types.
 
-use hyper::{
-    body, header,
-    service::{make_service_fn, service_fn},
-    Body, Client, Method, Request, Response, Server, StatusCode, Uri,
-};
-#[cfg(feature = "legacy")]
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-
 use std::{
     collections::HashSet,
     fmt::{self, Write as _},
@@ -19,11 +11,20 @@ use std::{
     time::{Duration, Instant},
 };
 
+use hyper::{
+    body, header,
+    service::{make_service_fn, service_fn},
+    Body, Client, Method, Request, Response, Server, StatusCode, Uri,
+};
+#[cfg(feature = "legacy")]
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+
 #[cfg(test)]
 mod tests;
 
-use crate::metrics::{Facade, EXPORTER_METRICS};
 use vise::{Format, MetricsCollection, Registry};
+
+use crate::metrics::{Facade, EXPORTER_METRICS};
 
 #[derive(Clone)]
 struct MetricsExporterInner {

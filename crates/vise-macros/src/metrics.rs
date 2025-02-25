@@ -1,12 +1,12 @@
 //! Derivation of the `Metrics` trait.
 
+use std::fmt;
+
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{
     spanned::Spanned, Attribute, Data, DeriveInput, Expr, Field, Ident, Lit, LitStr, Path, Type,
 };
-
-use std::fmt;
 
 use crate::utils::{ensure_no_generics, metrics_attribute, ParseAttribute};
 

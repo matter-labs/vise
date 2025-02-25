@@ -1,10 +1,9 @@
 //! Mock app that defines `vise` metrics and uses the corresponding exporter.
 
-use rand::{thread_rng, Rng};
-use tokio::sync::watch;
-
 use std::{env, time::Duration};
 
+use rand::{thread_rng, Rng};
+use tokio::sync::watch;
 use vise::{
     Buckets, Counter, EncodeLabelSet, EncodeLabelValue, Family, Format, Gauge, Histogram, Info,
     LabeledFamily, Metrics, Unit,

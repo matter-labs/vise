@@ -1,12 +1,12 @@
 //! Derivation of `EncodeLabelValue` and `EncodeLabelSet` traits.
 
+use std::{collections::HashSet, fmt};
+
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{
     Attribute, Data, DeriveInput, Expr, Field, Fields, Ident, LitStr, Path, PathArguments, Type,
 };
-
-use std::{collections::HashSet, fmt};
 
 use crate::utils::{ensure_no_generics, metrics_attribute, ParseAttribute};
 

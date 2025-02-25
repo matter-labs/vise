@@ -1,17 +1,15 @@
 //! Core `Metrics` trait defined by the crate.
 
+use std::{fmt, hash::Hash, ops, sync::Arc};
+
 use once_cell::sync::Lazy;
-use std::hash::Hash;
 
-use std::sync::Arc;
-use std::{fmt, ops};
-
-use crate::encoding::LabelGroups;
-use crate::wrappers::FamilyInner;
 use crate::{
     descriptors::MetricGroupDescriptor,
+    encoding::LabelGroups,
     registry::{CollectToRegistry, MetricsVisitor, Registry},
     traits::EncodeLabelSet,
+    wrappers::FamilyInner,
 };
 
 /// Collection of metrics for a library or application. Should be derived using the corresponding macro.

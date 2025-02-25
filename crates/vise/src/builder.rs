@@ -1,6 +1,6 @@
-use prometheus_client::{encoding::EncodeMetric, metrics::counter::Counter};
-
 use std::hash::Hash;
+
+use prometheus_client::{encoding::EncodeMetric, metrics::counter::Counter};
 
 use crate::{
     traits::{EncodeLabelSet, GaugeValue, HistogramValue},

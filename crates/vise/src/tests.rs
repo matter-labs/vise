@@ -1,9 +1,9 @@
 #![allow(clippy::float_cmp)]
 
+use std::time::Duration;
+
 use assert_matches::assert_matches;
 use derive_more::Display;
-
-use std::time::Duration;
 
 use super::*;
 

@@ -1,14 +1,14 @@
 //! Traits used for metric definitions, such as [`GaugeValue`] and [`HistogramValue`].
 
-use prometheus_client::{
-    encoding::{EncodeLabel, EncodeLabelValue, LabelSetEncoder, LabelValueEncoder},
-    metrics::gauge,
-};
-
 use std::{
     fmt,
     sync::atomic::{AtomicI64, AtomicIsize, AtomicU64, AtomicUsize, Ordering},
     time::Duration,
+};
+
+use prometheus_client::{
+    encoding::{EncodeLabel, EncodeLabelValue, LabelSetEncoder, LabelValueEncoder},
+    metrics::gauge,
 };
 
 /// Encodes a label set.

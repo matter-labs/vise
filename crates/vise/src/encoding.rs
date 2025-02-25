@@ -1,12 +1,12 @@
-use crate::MetricsVisitor;
-use prometheus_client::encoding::{EncodeMetric, LabelSetEncoder, MetricEncoder};
-use prometheus_client::metrics::MetricType;
-use prometheus_client::registry::{Metric, Unit};
-use std::collections::HashMap;
-use std::fmt;
-use std::sync::Arc;
+use std::{collections::HashMap, fmt, sync::Arc};
 
-use crate::traits::EncodeLabelSet;
+use prometheus_client::{
+    encoding::{EncodeMetric, LabelSetEncoder, MetricEncoder},
+    metrics::MetricType,
+    registry::{Metric, Unit},
+};
+
+use crate::{traits::EncodeLabelSet, MetricsVisitor};
 
 /// Wraps a label set so that it can be used in the `prometheus_client` library.
 #[derive(Debug)]

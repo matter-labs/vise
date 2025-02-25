@@ -1,12 +1,11 @@
+use std::{error, fmt};
+
 use once_cell::sync::{Lazy, OnceCell};
 use prometheus_client::{collector::Collector as CollectorTrait, encoding::DescriptorEncoder};
 
-use std::{error, fmt};
-
-use crate::registry::MetricsEncoder;
 use crate::{
     descriptors::MetricGroupDescriptor,
-    registry::{CollectToRegistry, Registry},
+    registry::{CollectToRegistry, MetricsEncoder, Registry},
     Metrics,
 };
 
@@ -135,12 +134,12 @@ impl<M: Metrics> CollectorTrait for LazyGlobalCollector<M> {
 
 #[cfg(test)]
 mod tests {
-    use once_cell::sync::Lazy;
-
     use std::sync::{
         atomic::{AtomicI64, Ordering},
         Arc,
     };
+
+    use once_cell::sync::Lazy;
 
     use super::*;
     use crate::{Format, Gauge, Registry, Unit};

@@ -1,5 +1,15 @@
 //! Wrappers for metric types defined in `prometheus-client`.
 
+use std::{
+    collections::HashMap,
+    fmt,
+    hash::Hash,
+    marker::PhantomData,
+    ops,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
 use elsa::sync::FrozenMap;
 use once_cell::sync::OnceCell;
 use prometheus_client::{
@@ -14,20 +24,10 @@ use prometheus_client::{
     registry::Unit,
 };
 
-use std::{
-    collections::HashMap,
-    fmt,
-    hash::Hash,
-    marker::PhantomData,
-    ops,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
-use crate::encoding::{EncodeGroupedMetric, FullLabelSet, LabelSetWrapper};
 use crate::{
     buckets::Buckets,
     builder::BuildMetric,
+    encoding::{EncodeGroupedMetric, FullLabelSet, LabelSetWrapper},
     traits::{EncodeLabelSet, EncodedGaugeValue, GaugeValue, HistogramValue, MapLabels},
 };
 
@@ -570,12 +570,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use prometheus_client::metrics::family::Family as StandardFamily;
-
-    use crate::MetricBuilder;
     use std::{sync::mpsc, thread};
 
+    use prometheus_client::metrics::family::Family as StandardFamily;
+
     use super::*;
+    use crate::MetricBuilder;
 
     type Label = (&'static str, &'static str);
 

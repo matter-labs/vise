@@ -1,19 +1,19 @@
 //! Tests for metrics exporter.
 
-use hyper::body::Bytes;
-use tokio::sync::{mpsc, Mutex};
-use tracing::subscriber::Subscriber;
-use tracing_capture::{CaptureLayer, SharedStorage};
-use tracing_subscriber::layer::SubscriberExt;
-
 use std::{
     net::Ipv4Addr,
     str,
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use super::*;
+use hyper::body::Bytes;
+use tokio::sync::{mpsc, Mutex};
+use tracing::subscriber::Subscriber;
+use tracing_capture::{CaptureLayer, SharedStorage};
+use tracing_subscriber::layer::SubscriberExt;
 use vise::{Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Global, Metrics};
+
+use super::*;
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(3);
 // Since all tests access global state (metrics), we shouldn't run them in parallel

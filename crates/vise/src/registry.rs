@@ -1,18 +1,17 @@
 //! Wrapper around metrics registry.
 
+use std::{collections::HashMap, fmt, sync::Mutex};
+
+use once_cell::sync::Lazy;
 use prometheus_client::{
     encoding::{text, DescriptorEncoder},
     registry::{Registry as RegistryInner, Unit},
 };
 
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
-use std::{collections::HashMap, fmt};
-
-use crate::encoding::GroupedMetric;
 use crate::{
     collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
+    encoding::GroupedMetric,
     format::{Format, PrometheusWrapper},
     Metrics,
 };
