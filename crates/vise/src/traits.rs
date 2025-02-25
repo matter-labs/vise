@@ -264,7 +264,10 @@ pub trait MapLabels<S>: Copy {
 
 /// Identity mapping.
 impl<S: EncodeLabelSet> MapLabels<S> for () {
-    type Output<'a> = LabelRef<'a, S> where S: 'a;
+    type Output<'a>
+        = LabelRef<'a, S>
+    where
+        S: 'a;
 
     fn map_labels<'a>(&'a self, labels: &'a S) -> Self::Output<'a> {
         LabelRef(labels)
@@ -298,7 +301,10 @@ pub struct StaticLabelSet<'a, S: 'a> {
 }
 
 impl<S: EncodeLabelValue + Send + Sync> MapLabels<S> for [&'static str; 1] {
-    type Output<'a> = StaticLabelSet<'a, (&'a S,)> where S: 'a;
+    type Output<'a>
+        = StaticLabelSet<'a, (&'a S,)>
+    where
+        S: 'a;
 
     fn map_labels<'a>(&'a self, labels: &'a S) -> Self::Output<'a> {
         StaticLabelSet {
