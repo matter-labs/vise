@@ -15,7 +15,7 @@ use std::{
 ///
 /// This trait is almost identical to [`EncodeLabelSet` from `prometheus_client`](prometheus_client::encoding::EncodeLabelSet),
 /// other than taking the encoder by reference, thus allowing to compose label sets.
-pub trait EncodeLabelSet {
+pub trait EncodeLabelSet: Send + Sync {
     /// Performs encoding.
     ///
     /// # Errors
@@ -36,7 +36,7 @@ impl<T: EncodeLabelSet + ?Sized> EncodeLabelSet for &T {
     }
 }
 
-impl<T: EncodeLabel> EncodeLabelSet for [T] {
+impl<T: EncodeLabel + Send + Sync> EncodeLabelSet for [T] {
     fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
         for label in self {
             label.encode(encoder.encode_label())?;
@@ -45,13 +45,13 @@ impl<T: EncodeLabel> EncodeLabelSet for [T] {
     }
 }
 
-impl<T: EncodeLabel, const N: usize> EncodeLabelSet for [T; N] {
+impl<T: EncodeLabel + Send + Sync, const N: usize> EncodeLabelSet for [T; N] {
     fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
         <[T]>::encode(self, encoder)
     }
 }
 
-impl<T: EncodeLabel> EncodeLabelSet for Vec<T> {
+impl<T: EncodeLabel + Send + Sync> EncodeLabelSet for Vec<T> {
     fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
         <[T]>::encode(self, encoder)
     }
@@ -297,7 +297,7 @@ pub struct StaticLabelSet<'a, S: 'a> {
     label_values: S,
 }
 
-impl<S: EncodeLabelValue> MapLabels<S> for [&'static str; 1] {
+impl<S: EncodeLabelValue + Send + Sync> MapLabels<S> for [&'static str; 1] {
     type Output<'a> = StaticLabelSet<'a, (&'a S,)> where S: 'a;
 
     fn map_labels<'a>(&'a self, labels: &'a S) -> Self::Output<'a> {
@@ -312,7 +312,7 @@ macro_rules! impl_map_labels {
     ($len:tt => $($idx:tt : $typ:ident),+) => {
         impl<$($typ,)+> MapLabels<($($typ,)+)> for [&'static str; $len]
         where
-            $($typ: EncodeLabelValue,)+
+            $($typ: EncodeLabelValue + Send + Sync,)+
         {
             type Output<'a> = StaticLabelSet<'a, ($(&'a $typ,)+)> where $($typ: 'a,)+;
 
@@ -334,7 +334,7 @@ macro_rules! impl_encode_for_static_label_set {
     ($len:tt => $($idx:tt : $typ:ident),+) => {
         impl<'a, $($typ,)+> EncodeLabelSet for StaticLabelSet<'a, ($(&'a $typ,)+)>
         where
-            $($typ: EncodeLabelValue,)+
+            $($typ: EncodeLabelValue + Send + Sync,)+
         {
             fn encode(&self, encoder: &mut LabelSetEncoder<'_>) -> fmt::Result {
                 $(

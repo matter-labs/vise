@@ -284,7 +284,9 @@ impl Registry {
     }
 }
 
+/// FIXME
 pub trait MetricsVisitor {
+    /// FIXME
     fn visit_metric(
         &mut self,
         name: &'static str,

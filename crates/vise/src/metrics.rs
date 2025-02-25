@@ -3,8 +3,10 @@
 use once_cell::sync::Lazy;
 use std::hash::Hash;
 
+use std::sync::Arc;
 use std::{fmt, ops};
 
+use crate::encoding::LabelGroups;
 use crate::wrappers::FamilyInner;
 use crate::{
     descriptors::MetricGroupDescriptor,
@@ -128,8 +130,13 @@ where
 {
     const DESCRIPTOR: MetricGroupDescriptor = M::DESCRIPTOR;
 
-    fn visit_metrics(&self, _visitor: &mut dyn MetricsVisitor) {
-        todo!("collect into groups, then visit")
+    fn visit_metrics(&self, visitor: &mut dyn MetricsVisitor) {
+        let mut grouped = LabelGroups::default();
+        for (labels, metrics) in self.to_entries() {
+            grouped.set_labels(Arc::new(labels));
+            metrics.visit_metrics(&mut grouped);
+        }
+        grouped.visit_metrics(visitor);
     }
 }
 

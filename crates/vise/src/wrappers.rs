@@ -24,7 +24,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::encoding::{EncodeGroupedMetric, GroupedMetricEncoder, LabelSetWrapper};
+use crate::encoding::{EncodeGroupedMetric, FullLabelSet, LabelSetWrapper};
 use crate::{
     buckets::Buckets,
     builder::BuildMetric,
@@ -553,11 +553,16 @@ where
     S: Clone + Eq + Hash,
     L: MapLabels<S>,
 {
-    fn encode_grouped(&self, encoder: &mut GroupedMetricEncoder<'_>) -> fmt::Result {
+    fn encode_grouped(
+        &self,
+        group_labels: &dyn EncodeLabelSet,
+        encoder: &mut MetricEncoder<'_>,
+    ) -> fmt::Result {
         for labels in &self.inner.map.keys_cloned() {
             let metric = self.inner.map.get(labels).unwrap();
             let mapped_labels = self.labels.map_labels(labels);
-            encoder.encode_family(&mapped_labels, |encoder| metric.encode(encoder))?;
+            let all_labels = FullLabelSet::new(group_labels, &mapped_labels);
+            metric.encode(encoder.encode_family(&all_labels)?)?;
         }
         Ok(())
     }
