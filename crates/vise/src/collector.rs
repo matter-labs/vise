@@ -1,12 +1,12 @@
+use std::{error, fmt};
+
 use once_cell::sync::{Lazy, OnceCell};
 use prometheus_client::{collector::Collector as CollectorTrait, encoding::DescriptorEncoder};
 
-use std::{error, fmt};
-
 use crate::{
     descriptors::MetricGroupDescriptor,
-    registry::{CollectToRegistry, MetricsVisitor, Registry},
-    Global, Metrics,
+    registry::{CollectToRegistry, MetricsEncoder, Registry},
+    Metrics,
 };
 
 type CollectorFn<M> = Box<dyn Fn() -> M + Send + Sync>;
@@ -83,7 +83,7 @@ impl<M: Metrics> Collector<M> {
 impl<M: Metrics> CollectorTrait for &'static Collector<M> {
     fn encode(&self, encoder: DescriptorEncoder<'_>) -> fmt::Result {
         if let Some(hook) = self.inner.get() {
-            let mut visitor = MetricsVisitor::for_collector(encoder);
+            let mut visitor = MetricsEncoder::from(encoder);
             hook().visit_metrics(&mut visitor);
             visitor.check()
         } else {
@@ -115,15 +115,15 @@ impl<M: Metrics> fmt::Debug for LazyGlobalCollector<M> {
 }
 
 impl<M: Metrics> LazyGlobalCollector<M> {
-    pub(crate) fn new(metrics: &'static Global<M>) -> Self {
-        Self(&metrics.0)
+    pub(crate) fn new(metrics: &'static Lazy<M>) -> Self {
+        Self(metrics)
     }
 }
 
 impl<M: Metrics> CollectorTrait for LazyGlobalCollector<M> {
     fn encode(&self, encoder: DescriptorEncoder<'_>) -> fmt::Result {
         if let Some(metrics) = Lazy::get(self.0) {
-            let mut visitor = MetricsVisitor::for_collector(encoder);
+            let mut visitor = MetricsEncoder::from(encoder);
             metrics.visit_metrics(&mut visitor);
             visitor.check()
         } else {
@@ -134,12 +134,12 @@ impl<M: Metrics> CollectorTrait for LazyGlobalCollector<M> {
 
 #[cfg(test)]
 mod tests {
-    use once_cell::sync::Lazy;
-
     use std::sync::{
         atomic::{AtomicI64, Ordering},
         Arc,
     };
+
+    use once_cell::sync::Lazy;
 
     use super::*;
     use crate::{Format, Gauge, Registry, Unit};

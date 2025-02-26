@@ -1,18 +1,19 @@
 //! Wrapper around metrics registry.
 
+use std::{collections::HashMap, fmt, sync::Mutex};
+
+use once_cell::sync::Lazy;
 use prometheus_client::{
     encoding::{text, DescriptorEncoder},
-    registry::{Metric, Registry as RegistryInner, Unit},
+    registry::{Registry as RegistryInner, Unit},
 };
-
-use std::sync::Mutex;
-use std::{collections::HashMap, fmt};
 
 use crate::{
     collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
+    encoding::GroupedMetric,
     format::{Format, PrometheusWrapper},
-    Global, Metrics,
+    Metrics,
 };
 
 impl FullMetricDescriptor {
@@ -94,7 +95,7 @@ impl Default for MetricsCollection {
 impl MetricsCollection {
     /// Specifies that metrics should be lazily exported.
     ///
-    /// By default, [`Global`] metrics are eagerly collected into a [`Registry`]; i.e., metrics will get exported
+    /// By default, [`Global`](crate::Global) metrics are eagerly collected into a [`Registry`]; i.e., metrics will get exported
     /// even if they were never modified by the app / library logic. This is *usually* fine (e.g.,
     /// this allows getting all metrics metadata on the first scrape), but sometimes you may want to
     /// export only metrics touched by the app / library logic. E.g., you have a single app binary
@@ -126,7 +127,7 @@ impl MetricsCollection {
 }
 
 impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
-    /// Creates a registry with all [`register`](crate::register)ed [`Global`] metrics
+    /// Creates a registry with all [`register`](crate::register)ed [`Global`](crate::Global) metrics
     /// and [`Collector`]s. If a filtering predicate [was provided](MetricsCollection::filter()),
     /// only metrics satisfying this function will be collected.
     #[allow(clippy::missing_panics_doc)]
@@ -238,12 +239,15 @@ impl Registry {
     /// Registers a group of metrics.
     pub fn register_metrics<M: Metrics>(&mut self, metrics: &M) {
         self.descriptors.push(&M::DESCRIPTOR);
-        let mut visitor = MetricsVisitor(MetricsVisitorInner::Registry(self));
-        metrics.visit_metrics(&mut visitor);
+        metrics.visit_metrics(self);
     }
 
-    pub(crate) fn register_global_metrics<M: Metrics>(&mut self, metrics: &'static Global<M>) {
-        if self.is_lazy {
+    pub(crate) fn register_global_metrics<M: Metrics>(
+        &mut self,
+        metrics: &'static Lazy<M>,
+        force_lazy: bool,
+    ) {
+        if force_lazy || self.is_lazy {
             self.descriptors.push(&M::DESCRIPTOR);
             let collector = LazyGlobalCollector::new(metrics);
             self.inner.register_collector(Box::new(collector));
@@ -279,74 +283,77 @@ impl Registry {
     }
 }
 
-#[derive(Debug)]
-enum MetricsVisitorInner<'a> {
-    Registry(&'a mut Registry),
-    Collector(Result<DescriptorEncoder<'a>, fmt::Error>),
-}
-
-/// Visitor for a group of metrics in a [`Registry`].
-#[derive(Debug)]
-pub struct MetricsVisitor<'a>(MetricsVisitorInner<'a>);
-
-impl<'a> MetricsVisitor<'a> {
-    pub(crate) fn for_collector(encoder: DescriptorEncoder<'a>) -> Self {
-        Self(MetricsVisitorInner::Collector(Ok(encoder)))
-    }
-
-    pub(crate) fn check(self) -> fmt::Result {
-        match self.0 {
-            MetricsVisitorInner::Registry(_) => Ok(()),
-            MetricsVisitorInner::Collector(res) => res.map(drop),
-        }
-    }
-
-    /// Registers a metric of family of metrics.
-    pub fn push_metric(
+/// Visitor for [`Metrics`].
+pub trait MetricsVisitor {
+    /// Visits a specific metric instance.
+    #[doc(hidden)] // implementation detail
+    fn visit_metric(
         &mut self,
         name: &'static str,
         help: &'static str,
         unit: Option<Unit>,
-        metric: impl Metric,
-    ) {
-        match &mut self.0 {
-            MetricsVisitorInner::Registry(registry) => {
-                if let Some(unit) = unit {
-                    registry.inner.register_with_unit(name, help, unit, metric);
-                } else {
-                    registry.inner.register(name, help, metric);
-                }
-            }
-            MetricsVisitorInner::Collector(encode_result) => {
-                if let Ok(encoder) = encode_result {
-                    let new_result =
-                        Self::encode_metric(encoder, name, help, unit.as_ref(), &metric);
-                    if let Err(err) = new_result {
-                        *encode_result = Err(err);
-                    }
-                }
-            }
-        }
-    }
+        metric: Box<dyn GroupedMetric>,
+    );
+}
 
-    fn encode_metric(
-        encoder: &mut DescriptorEncoder<'_>,
+impl MetricsVisitor for Registry {
+    fn visit_metric(
+        &mut self,
         name: &'static str,
         help: &'static str,
-        unit: Option<&Unit>,
-        metric: &impl Metric,
-    ) -> fmt::Result {
-        // Append a full stop to `help` to be consistent with registered metrics.
-        let mut help = String::from(help);
-        help.push('.');
+        unit: Option<Unit>,
+        metric: Box<dyn GroupedMetric>,
+    ) {
+        if let Some(unit) = unit {
+            self.inner.register_with_unit(name, help, unit, metric);
+        } else {
+            self.inner.register(name, help, metric);
+        }
+    }
+}
 
-        let metric_encoder = encoder.encode_descriptor(name, &help, unit, metric.metric_type())?;
-        metric.encode(metric_encoder)
+#[derive(Debug)]
+pub(crate) struct MetricsEncoder<'a> {
+    inner: Result<DescriptorEncoder<'a>, fmt::Error>,
+}
+
+impl MetricsEncoder<'_> {
+    pub(crate) fn check(self) -> fmt::Result {
+        self.inner.map(drop)
+    }
+}
+
+impl<'a> From<DescriptorEncoder<'a>> for MetricsEncoder<'a> {
+    fn from(inner: DescriptorEncoder<'a>) -> Self {
+        Self { inner: Ok(inner) }
+    }
+}
+
+impl MetricsVisitor for MetricsEncoder<'_> {
+    fn visit_metric(
+        &mut self,
+        name: &'static str,
+        help: &'static str,
+        unit: Option<Unit>,
+        metric: Box<dyn GroupedMetric>,
+    ) {
+        if let Ok(encoder) = &mut self.inner {
+            // Append a full stop to `help` to be consistent with registered metrics.
+            let mut help = String::from(help);
+            help.push('.');
+
+            let new_result = encoder
+                .encode_descriptor(name, &help, unit.as_ref(), metric.metric_type())
+                .and_then(|encoder| metric.encode(encoder));
+            if let Err(err) = new_result {
+                self.inner = Err(err);
+            }
+        }
     }
 }
 
 /// Collects metrics from this type to registry. This is used by the [`register`](crate::register)
-/// macro to handle registration of [`Global`] metrics and [`Collector`]s.
+/// macro to handle registration of [`Global`](crate::Global) metrics and [`Collector`]s.
 pub trait CollectToRegistry: 'static + Send + Sync {
     #[doc(hidden)] // implementation detail
     fn descriptor(&self) -> &'static MetricGroupDescriptor;

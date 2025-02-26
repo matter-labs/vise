@@ -1,8 +1,8 @@
 //! Support for various metrics encoding formats.
 
-use prometheus_client::metrics::MetricType;
-
 use std::{fmt, mem};
+
+use prometheus_client::metrics::MetricType;
 
 /// Metrics export format.
 ///

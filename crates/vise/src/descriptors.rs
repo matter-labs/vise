@@ -65,9 +65,9 @@ impl FullMetricDescriptor {
 
 #[cfg(test)]
 mod tests {
-    use assert_matches::assert_matches;
-
     use std::collections::HashMap;
+
+    use assert_matches::assert_matches;
 
     use super::*;
     use crate::{metrics::Metrics, tests::TestMetrics};

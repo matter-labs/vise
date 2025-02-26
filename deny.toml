@@ -36,7 +36,7 @@ allow = [
   "Apache-2.0",
   "BSD-2-Clause",
   "MIT",
-  "Unicode-DFS-2016",
+  "Unicode-3.0",
 ]
 
 [bans]

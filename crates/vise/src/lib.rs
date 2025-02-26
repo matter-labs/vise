@@ -16,6 +16,7 @@
 //!   metric data in the OpenMetrics text format. Registration can be automated using the [`register`]
 //!   attribute, but it can be manual as well.
 //! - In order to allow for metrics computed during scraping, you can use [`Collector`].
+//! - To share one or more labels for a group of metrics, wrap them in a [`MetricsFamily`].
 //!
 //! # Examples
 //!
@@ -121,7 +122,136 @@
 #![allow(clippy::must_use_candidate, clippy::module_name_repetitions)]
 
 pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
-
+/// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
+/// into registries instantiated using [`MetricsCollection`].
+///
+/// This macro must be placed on a static item of a type implementing [`CollectToRegistry`].
+///
+/// # Examples
+///
+/// ## Usage with global metrics
+///
+/// ```
+/// use vise::{Gauge, Global, Metrics};
+///
+/// #[derive(Debug, Metrics)]
+/// #[metrics(prefix = "test")]
+/// pub(crate) struct TestMetrics {
+///     gauge: Gauge,
+/// }
+///
+/// #[vise::register]
+/// static TEST_METRICS: Global<TestMetrics> = Global::new();
+/// ```
+///
+/// ## Usage with collectors
+///
+/// ```
+/// use vise::{Collector, Gauge, Global, Metrics};
+///
+/// #[derive(Debug, Metrics)]
+/// #[metrics(prefix = "dynamic")]
+/// pub(crate) struct DynamicMetrics {
+///     gauge: Gauge,
+/// }
+///
+/// #[vise::register]
+/// static TEST_COLLECTOR: Collector<DynamicMetrics> = Collector::new();
+/// ```
+pub use vise_macros::register;
+/// Derives the [`EncodeLabelSet`] trait for a type, which encodes a set of metric labels.
+///
+/// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
+/// The macro can be configured using `#[metrics()]` attributes.
+///
+/// # Container attributes
+///
+/// ## `label`
+///
+/// **Type:** string
+///
+/// If specified, the type will be treated as a single label with the given name. This covers
+/// the common case in which a label set consists of a single label. In this case, the type
+/// also needs to implement [`EncodeLabelValue`].
+///
+/// If this attribute is not specified (which is the default), a container must be a `struct`
+/// with named fields. A label with the matching name will be created for each field.
+///
+/// # Field attributes
+///
+/// ## `skip`
+///
+/// **Type:** path to a function with `fn(&FieldType) -> bool` signature
+///
+/// This attribute works similarly to `skip_serializing_if` in `serde` – if the function it points
+/// to returns `true` for the field value, the field will not be encoded as a label.
+///
+/// `Option` fields are skipped by default if they are `None` (i.e., they use `skip = Option::is_none`).
+///
+/// [`EncodeLabelSet`]: crate::traits::EncodeLabelSet
+///
+/// ## `unit`
+///
+/// **Type:** expression evaluating to [`Unit`]
+///
+/// Specifies unit of measurement for a label. The unit will be added to the label name as a suffix
+/// (e.g., `timeout_seconds` if placed on a field named `timeout`). This is mostly useful for [`Info`] metrics.
+///
+/// # Examples
+///
+/// ## Set with a single label
+///
+/// ```
+/// use derive_more::Display;
+/// use vise::{EncodeLabelSet, EncodeLabelValue};
+///
+/// #[derive(Debug, Display, Clone, PartialEq, Eq, Hash)]
+/// #[derive(EncodeLabelValue, EncodeLabelSet)]
+/// #[metrics(label = "method")]
+/// struct Method(&'static str);
+/// ```
+///
+/// ## Set with multiple labels
+///
+/// ```
+/// # use vise::EncodeLabelSet;
+/// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet)]
+/// struct Labels {
+///     /// Label that is skipped when empty.
+///     #[metrics(skip = str::is_empty)]
+///     name: &'static str,
+///     /// Numeric label.
+///     num: u8,
+/// }
+/// ```
+///
+/// ## Set for info metric
+///
+/// ```
+/// use vise::{EncodeLabelSet, DurationAsSecs, Unit};
+/// use std::time::Duration;
+///
+/// #[derive(Debug, EncodeLabelSet)]
+/// struct InfoLabels {
+///     /// Simple label.
+///     version: &'static str,
+///     /// Label with a unit.
+///     #[metrics(unit = Unit::Seconds)]
+///     request_timeout: DurationAsSecs,
+///     /// Another label with a unit.
+///     #[metrics(unit = Unit::Bytes)]
+///     buffer_capacity: u64,
+/// }
+///
+/// let labels = InfoLabels {
+///     version: "0.1.0",
+///     request_timeout: Duration::from_millis(100).into(),
+///     buffer_capacity: 1_024,
+/// };
+/// // will be exported as the following labels:
+/// // { version="0.1.0", request_timeout_seconds="0.1", buffer_capacity="1024" }
+/// ```
+pub use vise_macros::EncodeLabelSet;
 /// Derives the [`EncodeLabelValue`] trait for a type, which encodes a metric label value.
 ///
 /// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
@@ -211,101 +341,6 @@ pub use prometheus_client::{metrics::counter::Counter, registry::Unit};
 /// }
 /// ```
 pub use vise_macros::EncodeLabelValue;
-
-/// Derives the [`EncodeLabelSet`] trait for a type, which encodes a set of metric labels.
-///
-/// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
-/// The macro can be configured using `#[metrics()]` attributes.
-///
-/// # Container attributes
-///
-/// ## `label`
-///
-/// **Type:** string
-///
-/// If specified, the type will be treated as a single label with the given name. This covers
-/// the common case in which a label set consists of a single label. In this case, the type
-/// also needs to implement [`EncodeLabelValue`].
-///
-/// If this attribute is not specified (which is the default), a container must be a `struct`
-/// with named fields. A label with the matching name will be created for each field.
-///
-/// # Field attributes
-///
-/// ## `skip`
-///
-/// **Type:** path to a function with `fn(&FieldType) -> bool` signature
-///
-/// This attribute works similarly to `skip_serializing_if` in `serde` – if the function it points
-/// to returns `true` for the field value, the field will not be encoded as a label.
-///
-/// `Option` fields are skipped by default if they are `None` (i.e., they use `skip = Option::is_none`).
-///
-/// [`EncodeLabelSet`]: trait@prometheus_client::encoding::EncodeLabelSet
-///
-/// ## `unit`
-///
-/// **Type:** expression evaluating to [`Unit`]
-///
-/// Specifies unit of measurement for a label. The unit will be added to the label name as a suffix
-/// (e.g., `timeout_seconds` if placed on a field named `timeout`). This is mostly useful for [`Info`] metrics.
-///
-/// # Examples
-///
-/// ## Set with a single label
-///
-/// ```
-/// use derive_more::Display;
-/// use vise::{EncodeLabelSet, EncodeLabelValue};
-///
-/// #[derive(Debug, Display, Clone, PartialEq, Eq, Hash)]
-/// #[derive(EncodeLabelValue, EncodeLabelSet)]
-/// #[metrics(label = "method")]
-/// struct Method(&'static str);
-/// ```
-///
-/// ## Set with multiple labels
-///
-/// ```
-/// # use vise::EncodeLabelSet;
-/// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet)]
-/// struct Labels {
-///     /// Label that is skipped when empty.
-///     #[metrics(skip = str::is_empty)]
-///     name: &'static str,
-///     /// Numeric label.
-///     num: u8,
-/// }
-/// ```
-///
-/// ## Set for info metric
-///
-/// ```
-/// use vise::{EncodeLabelSet, DurationAsSecs, Unit};
-/// use std::time::Duration;
-///
-/// #[derive(Debug, EncodeLabelSet)]
-/// struct InfoLabels {
-///     /// Simple label.
-///     version: &'static str,
-///     /// Label with a unit.
-///     #[metrics(unit = Unit::Seconds)]
-///     request_timeout: DurationAsSecs,
-///     /// Another label with a unit.
-///     #[metrics(unit = Unit::Bytes)]
-///     buffer_capacity: u64,
-/// }
-///
-/// let labels = InfoLabels {
-///     version: "0.1.0",
-///     request_timeout: Duration::from_millis(100).into(),
-///     buffer_capacity: 1_024,
-/// };
-/// // will be exported as the following labels:
-/// // { version="0.1.0", request_timeout_seconds="0.1", buffer_capacity="1024" }
-/// ```
-pub use vise_macros::EncodeLabelSet;
-
 /// Derives the [`Metrics`](trait@Metrics) trait for a type.
 ///
 /// This macro must be placed on a struct with named fields and with no generics (lifetimes, type params
@@ -350,43 +385,21 @@ pub use vise_macros::EncodeLabelSet;
 /// See crate-level docs and other crate docs for the examples of usage.
 pub use vise_macros::Metrics;
 
-/// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
-/// into registries instantiated using [`MetricsCollection`].
-///
-/// This macro must be placed on a static item of a type implementing [`CollectToRegistry`].
-///
-/// # Examples
-///
-/// ## Usage with global metrics
-///
-/// ```
-/// use vise::{Gauge, Global, Metrics};
-///
-/// #[derive(Debug, Metrics)]
-/// #[metrics(prefix = "test")]
-/// pub(crate) struct TestMetrics {
-///     gauge: Gauge,
-/// }
-///
-/// #[vise::register]
-/// static TEST_METRICS: Global<TestMetrics> = Global::new();
-/// ```
-///
-/// ## Usage with collectors
-///
-/// ```
-/// use vise::{Collector, Gauge, Global, Metrics};
-///
-/// #[derive(Debug, Metrics)]
-/// #[metrics(prefix = "dynamic")]
-/// pub(crate) struct DynamicMetrics {
-///     gauge: Gauge,
-/// }
-///
-/// #[vise::register]
-/// static TEST_COLLECTOR: Collector<DynamicMetrics> = Collector::new();
-/// ```
-pub use vise_macros::register;
+pub use crate::{
+    buckets::Buckets,
+    builder::{BuildMetric, MetricBuilder},
+    collector::{BeforeScrapeError, Collector},
+    format::Format,
+    metrics::{Global, Metrics, MetricsFamily},
+    registry::{
+        CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
+        METRICS_REGISTRATIONS,
+    },
+    wrappers::{
+        DurationAsSecs, Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily,
+        LatencyObserver, SetInfoError,
+    },
+};
 
 #[doc(hidden)] // only used by the proc macros
 pub mod _reexports {
@@ -398,6 +411,7 @@ mod buckets;
 mod builder;
 mod collector;
 pub mod descriptors;
+mod encoding;
 mod format;
 mod metrics;
 mod registry;
@@ -407,22 +421,6 @@ pub mod traits;
 #[doc(hidden)]
 pub mod validation;
 mod wrappers;
-
-pub use crate::{
-    buckets::Buckets,
-    builder::{BuildMetric, MetricBuilder},
-    collector::{BeforeScrapeError, Collector},
-    format::Format,
-    metrics::{Global, Metrics},
-    registry::{
-        CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
-        METRICS_REGISTRATIONS,
-    },
-    wrappers::{
-        DurationAsSecs, Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily,
-        LatencyObserver, SetInfoError,
-    },
-};
 
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");

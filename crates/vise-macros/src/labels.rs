@@ -1,12 +1,12 @@
 //! Derivation of `EncodeLabelValue` and `EncodeLabelSet` traits.
 
+use std::{collections::HashSet, fmt};
+
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{
     Attribute, Data, DeriveInput, Expr, Field, Fields, Ident, LitStr, Path, PathArguments, Type,
 };
-
-use std::{collections::HashSet, fmt};
 
 use crate::utils::{ensure_no_generics, metrics_attribute, ParseAttribute};
 
@@ -496,10 +496,10 @@ impl EncodeLabelSetImpl {
         let cr = self.attrs.path_to_crate(proc_macro2::Span::call_site());
         let encoding = quote!(#cr::_reexports::encoding);
         quote! {
-            impl #encoding::EncodeLabelSet for #name {
+            impl #cr::traits::EncodeLabelSet for #name {
                 fn encode(
                     &self,
-                    mut encoder: #encoding::LabelSetEncoder<'_>,
+                    encoder: &mut #encoding::LabelSetEncoder<'_>,
                 ) -> core::fmt::Result {
                     #encode_impl
                 }

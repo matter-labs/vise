@@ -5,6 +5,14 @@ The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- Allow sharing common label set among multiple metrics using an interface similar to `Family` (#30).
+
+### Changed
+
+- Bump minimum supported Rust version to 1.79 (#30).
+
 ## 0.2.0 - 2024-08-07
 
 ### Changed

@@ -1,18 +1,5 @@
 //! Wrappers for metric types defined in `prometheus-client`.
 
-use elsa::sync::FrozenMap;
-use once_cell::sync::OnceCell;
-use prometheus_client::{
-    encoding::{
-        EncodeLabelKey, EncodeLabelSet, EncodeLabelValue, EncodeMetric, LabelKeyEncoder,
-        LabelValueEncoder, MetricEncoder,
-    },
-    metrics::{
-        gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner, MetricType, TypedMetric,
-    },
-    registry::Unit,
-};
-
 use std::{
     collections::HashMap,
     fmt,
@@ -23,10 +10,25 @@ use std::{
     time::{Duration, Instant},
 };
 
+use elsa::sync::FrozenMap;
+use once_cell::sync::OnceCell;
+use prometheus_client::{
+    encoding::{
+        EncodeLabelKey, EncodeLabelValue, EncodeMetric, LabelKeyEncoder, LabelValueEncoder,
+        MetricEncoder,
+    },
+    metrics::{
+        counter::Counter, gauge::Gauge as GaugeInner, histogram::Histogram as HistogramInner,
+        MetricType, TypedMetric,
+    },
+    registry::Unit,
+};
+
 use crate::{
     buckets::Buckets,
     builder::BuildMetric,
-    traits::{EncodedGaugeValue, GaugeValue, HistogramValue, MapLabels},
+    encoding::{EncodeGroupedMetric, FullLabelSet, LabelSetWrapper},
+    traits::{EncodeLabelSet, EncodedGaugeValue, GaugeValue, HistogramValue, MapLabels},
 };
 
 /// Label with a unit suffix implementing [`EncodeLabelKey`].
@@ -67,6 +69,8 @@ impl EncodeLabelValue for DurationAsSecs {
         EncodeLabelValue::encode(&self.0.as_secs_f64(), encoder)
     }
 }
+
+impl<N, A> EncodeGroupedMetric for Counter<N, A> where Self: EncodeMetric + TypedMetric {}
 
 /// Gauge metric.
 ///
@@ -148,6 +152,8 @@ impl<V: GaugeValue> TypedMetric for Gauge<V> {
     const TYPE: MetricType = MetricType::Gauge;
 }
 
+impl<V: GaugeValue> EncodeGroupedMetric for Gauge<V> {}
+
 /// Guard for a [`Gauge`] returned by [`Gauge::inc_guard()`]. When dropped, a guard decrements
 /// the gauge by the same value that it was increased by when creating the guard.
 #[derive(Debug)]
@@ -222,6 +228,8 @@ impl<V: HistogramValue> TypedMetric for Histogram<V> {
     const TYPE: MetricType = MetricType::Histogram;
 }
 
+impl<V: HistogramValue> EncodeGroupedMetric for Histogram<V> {}
+
 /// Observer of latency for a [`Histogram`].
 #[must_use = "`LatencyObserver` should be `observe()`d"]
 #[derive(Debug)]
@@ -277,7 +285,7 @@ impl<S: EncodeLabelSet> Info<S> {
 impl<S: EncodeLabelSet> EncodeMetric for Info<S> {
     fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
         if let Some(value) = self.0.get() {
-            encoder.encode_info(value)
+            encoder.encode_info(&LabelSetWrapper(value))
         } else {
             Ok(())
         }
@@ -291,6 +299,8 @@ impl<S: EncodeLabelSet> EncodeMetric for Info<S> {
 impl<S: EncodeLabelSet> TypedMetric for Info<S> {
     const TYPE: MetricType = MetricType::Info;
 }
+
+impl<S: EncodeLabelSet> EncodeGroupedMetric for Info<S> {}
 
 /// Error returned from [`Info::set()`].
 #[derive(Debug)]
@@ -309,7 +319,7 @@ impl<S> fmt::Display for SetInfoError<S> {
     }
 }
 
-struct FamilyInner<S, M: BuildMetric> {
+pub(crate) struct FamilyInner<S, M: BuildMetric> {
     map: FrozenMap<S, Box<M>>,
     builder: M::Builder,
 }
@@ -330,7 +340,7 @@ where
         formatter
             .debug_struct("Family")
             .field("map", &map_snapshot)
-            .field("constructor", &self.builder)
+            .field("builder", &self.builder)
             .finish()
     }
 }
@@ -340,12 +350,27 @@ where
     S: Clone + Eq + Hash,
     M: BuildMetric,
 {
-    fn get_or_create(&self, labels: &S) -> &M {
+    pub(crate) fn new(builder: M::Builder) -> Self {
+        Self {
+            map: FrozenMap::new(),
+            builder,
+        }
+    }
+
+    pub(crate) fn get_or_create(&self, labels: &S) -> &M {
         if let Some(metric) = self.map.get(labels) {
             return metric;
         }
         self.map
             .insert_with(labels.clone(), || Box::new(M::build(self.builder)))
+    }
+
+    pub(crate) fn to_entries(&self) -> impl Iterator<Item = (S, &M)> + '_ {
+        let labels = self.map.keys_cloned();
+        labels.into_iter().map(|key| {
+            let metric = self.map.get(&key).unwrap();
+            (key, metric)
+        })
     }
 }
 
@@ -460,10 +485,7 @@ where
     M: BuildMetric,
 {
     pub(crate) fn new(builder: M::Builder, labels: L) -> Self {
-        let inner = Arc::new(FamilyInner {
-            map: FrozenMap::new(),
-            builder,
-        });
+        let inner = Arc::new(FamilyInner::new(builder));
         Self { inner, labels }
     }
 
@@ -483,14 +505,7 @@ where
     /// This is inefficient and mostly useful for testing purposes.
     #[allow(clippy::missing_panics_doc)] // false positive
     pub fn to_entries(&self) -> HashMap<S, &M> {
-        let labels = self.inner.map.keys_cloned();
-        labels
-            .into_iter()
-            .map(|key| {
-                let metric = self.inner.map.get(&key).unwrap();
-                (key, metric)
-            })
-            .collect()
+        self.inner.to_entries().collect()
     }
 }
 
@@ -509,14 +524,14 @@ where
 
 impl<S, M, L> EncodeMetric for Family<S, M, L>
 where
-    M: BuildMetric,
+    M: BuildMetric + EncodeMetric + TypedMetric,
     S: Clone + Eq + Hash,
     L: MapLabels<S>,
 {
     fn encode(&self, mut encoder: MetricEncoder<'_>) -> fmt::Result {
         for labels in &self.inner.map.keys_cloned() {
             let metric = self.inner.map.get(labels).unwrap();
-            let mapped_labels = self.labels.map_labels(labels);
+            let mapped_labels = LabelSetWrapper(self.labels.map_labels(labels));
             let encoder = encoder.encode_family(&mapped_labels)?;
             metric.encode(encoder)?;
         }
@@ -528,18 +543,39 @@ where
     }
 }
 
-impl<S, M: BuildMetric, L> TypedMetric for Family<S, M, L> {
+impl<S, M: BuildMetric + TypedMetric, L> TypedMetric for Family<S, M, L> {
     const TYPE: MetricType = <M as TypedMetric>::TYPE;
+}
+
+impl<S, M, L> EncodeGroupedMetric for Family<S, M, L>
+where
+    M: BuildMetric + EncodeMetric + TypedMetric,
+    S: Clone + Eq + Hash,
+    L: MapLabels<S>,
+{
+    fn encode_grouped(
+        &self,
+        group_labels: &dyn EncodeLabelSet,
+        encoder: &mut MetricEncoder<'_>,
+    ) -> fmt::Result {
+        for labels in &self.inner.map.keys_cloned() {
+            let metric = self.inner.map.get(labels).unwrap();
+            let mapped_labels = self.labels.map_labels(labels);
+            let all_labels = FullLabelSet::new(group_labels, &mapped_labels);
+            metric.encode(encoder.encode_family(&all_labels)?)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use prometheus_client::metrics::family::Family as StandardFamily;
-
-    use crate::MetricBuilder;
     use std::{sync::mpsc, thread};
 
+    use prometheus_client::metrics::family::Family as StandardFamily;
+
     use super::*;
+    use crate::MetricBuilder;
 
     type Label = (&'static str, &'static str);
 

@@ -1,10 +1,10 @@
 //! `register` attribute macro.
 
+use std::fmt;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Attribute, ItemStatic, Path};
-
-use std::fmt;
 
 use crate::utils::{metrics_attribute, ParseAttribute};
 

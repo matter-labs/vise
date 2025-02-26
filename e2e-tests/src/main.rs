@@ -1,10 +1,9 @@
 //! Mock app that defines `vise` metrics and uses the corresponding exporter.
 
-use rand::{thread_rng, Rng};
-use tokio::sync::watch;
-
 use std::{env, time::Duration};
 
+use rand::{thread_rng, Rng};
+use tokio::sync::watch;
 use vise::{
     Buckets, Counter, EncodeLabelSet, EncodeLabelValue, Family, Format, Gauge, Histogram, Info,
     LabeledFamily, Metrics, Unit,
@@ -21,6 +20,16 @@ enum Method {
 #[derive(Debug, EncodeLabelSet)]
 struct PackageMetadata {
     version: &'static str,
+}
+
+#[derive(Debug, Metrics)]
+#[metrics(prefix = "test_rpc_method")]
+struct MethodMetrics {
+    /// Number of erroneous calls.
+    errors: Counter,
+    /// Call latency.
+    #[metrics(unit = Unit::Seconds, buckets = Buckets::LATENCIES)]
+    call_latency: Histogram<Duration>,
 }
 
 #[derive(Debug, Metrics)]
@@ -66,6 +75,21 @@ impl TestMetrics {
             self.histograms_with_buckets[&"other_test"]
                 .observe(Duration::from_millis(rng.gen_range(0..1_000)));
         }
+
+        GROUPED_METRICS[&Method::Call]
+            .errors
+            .inc_by(rng.gen_range(0..10));
+        GROUPED_METRICS[&Method::SendTransaction]
+            .errors
+            .inc_by(rng.gen_range(0..2));
+        for _ in 0..5 {
+            GROUPED_METRICS[&Method::Call]
+                .call_latency
+                .observe(Duration::from_millis(rng.gen_range(0..100)));
+        }
+        GROUPED_METRICS[&Method::SendTransaction]
+            .call_latency
+            .observe(Duration::from_millis(rng.gen_range(0..1_000)));
     }
 
     fn generate_legacy_metrics(rng: &mut impl Rng) {
@@ -98,6 +122,9 @@ impl TestMetrics {
 
 #[vise::register]
 static METRICS: vise::Global<TestMetrics> = vise::Global::new();
+
+#[vise::register]
+static GROUPED_METRICS: vise::MetricsFamily<Method, MethodMetrics> = vise::MetricsFamily::new();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {

@@ -1,12 +1,12 @@
 //! Derivation of the `Metrics` trait.
 
+use std::fmt;
+
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{
     spanned::Spanned, Attribute, Data, DeriveInput, Expr, Field, Ident, Lit, LitStr, Path, Type,
 };
-
-use std::fmt;
 
 use crate::utils::{ensure_no_generics, metrics_attribute, ParseAttribute};
 
@@ -151,7 +151,7 @@ impl MetricsField {
                 docs.push_str(line);
             }
         }
-        if docs.ends_with(|ch: char| ch == '.' || ch == '!' || ch == '?') {
+        if docs.ends_with(['.', '!', '?']) {
             // Remove the trailing punctuation since it'll be inserted automatically by the `Registry`.
             docs.pop();
         }
@@ -196,11 +196,11 @@ impl MetricsField {
         };
 
         quote! {
-            visitor.push_metric(
+            visitor.visit_metric(
                 #name_str,
                 #docs,
                 #unit,
-                core::clone::Clone::clone(&self.#name),
+                ::std::boxed::Box::new(::core::clone::Clone::clone(&self.#name)),
             );
         }
     }
@@ -339,7 +339,7 @@ impl MetricsImpl {
             impl #cr::Metrics for #name {
                 const DESCRIPTOR: #cr::descriptors::MetricGroupDescriptor = #descriptor;
 
-                fn visit_metrics(&self, visitor: &mut #cr::MetricsVisitor<'_>) {
+                fn visit_metrics(&self, visitor: &mut dyn #cr::MetricsVisitor) {
                     #(#visit_fields;)*
                 }
             }

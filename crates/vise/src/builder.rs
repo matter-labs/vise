@@ -1,14 +1,11 @@
-use prometheus_client::{
-    encoding::{EncodeLabelSet, EncodeMetric},
-    metrics::{counter::Counter, TypedMetric},
-};
-
 use std::hash::Hash;
 
+use prometheus_client::{encoding::EncodeMetric, metrics::counter::Counter};
+
 use crate::{
-    traits::{GaugeValue, HistogramValue},
+    traits::{EncodeLabelSet, GaugeValue, HistogramValue},
     wrappers::{Family, Gauge, Histogram, Info},
-    Buckets,
+    Buckets, Metrics,
 };
 
 /// Builder of a single metric or a [`Family`] of metrics. Parameterized by buckets
@@ -57,7 +54,7 @@ impl<B> MetricBuilder<B> {
 }
 
 /// Metric that can be constructed from a [`MetricBuilder`].
-pub trait BuildMetric: 'static + Sized + EncodeMetric + TypedMetric {
+pub trait BuildMetric: 'static + Sized /*+ EncodeMetric + TypedMetric*/ {
     /// Metric builder used to construct a metric.
     type Builder: Copy;
 
@@ -116,5 +113,13 @@ where
             labels: (),
         };
         Family::new(item_builder, builder.labels)
+    }
+}
+
+impl<M: Metrics + Default> BuildMetric for M {
+    type Builder = ();
+
+    fn build((): Self::Builder) -> Self {
+        Self::default()
     }
 }

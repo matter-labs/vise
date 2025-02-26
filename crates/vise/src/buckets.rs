@@ -1,6 +1,6 @@
-use compile_fmt::{compile_assert, fmt};
-
 use std::{cmp, iter, mem, ops};
+
+use compile_fmt::{compile_assert, fmt};
 
 #[derive(Debug, Clone, Copy)]
 enum BucketsInner {
