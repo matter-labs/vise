@@ -21,8 +21,6 @@ use hyper_util::{
     client::legacy::Client,
     rt::{TokioExecutor, TokioIo},
 };
-#[cfg(feature = "legacy")]
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use tokio::{io, net::TcpListener, sync::watch};
 use vise::{Format, MetricsCollection, Registry};
 
@@ -35,13 +33,11 @@ mod tests;
 struct MetricsExporterInner {
     registry: Arc<Registry>,
     format: Format,
-    #[cfg(feature = "legacy")]
-    legacy_exporter: Option<&'static PrometheusHandle>,
 }
 
 impl MetricsExporterInner {
     async fn render_body(&self) -> String {
-        let mut buffer = self.scrape_legacy_metrics();
+        let mut buffer = String::new();
 
         let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
         let registry = Arc::clone(&self.registry);
@@ -71,48 +67,6 @@ impl MetricsExporterInner {
         // we don't need to add a newline.
         buffer.push_str(&new_buffer);
         buffer
-    }
-
-    #[cfg(feature = "legacy")]
-    fn scrape_legacy_metrics(&self) -> String {
-        let latency = EXPORTER_METRICS.scrape_latency[&Facade::Metrics].start();
-        let buffer = if let Some(legacy_exporter) = self.legacy_exporter {
-            Self::transform_legacy_metrics(&legacy_exporter.render())
-        } else {
-            String::new()
-        };
-
-        let latency = latency.observe();
-        let scraped_size = buffer.len();
-        EXPORTER_METRICS.scraped_size[&Facade::Metrics].observe(scraped_size);
-        tracing::debug!(
-            latency_sec = latency.as_secs_f64(),
-            scraped_size,
-            "Scraped metrics using `metrics` façade in {latency:?} (scraped size: {scraped_size}B)"
-        );
-        buffer
-    }
-
-    #[cfg(not(feature = "legacy"))]
-    #[allow(clippy::unused_self)] // required for consistency with the real method
-    fn scrape_legacy_metrics(&self) -> String {
-        String::new()
-    }
-
-    /// Transforms legacy metrics from the Prometheus text format to the OpenMetrics one.
-    /// The output format is still accepted by Prometheus.
-    ///
-    /// This transform:
-    ///
-    /// - Removes empty lines from `buffer`; they are fine for Prometheus, but run contrary
-    ///   to the OpenMetrics text format spec.
-    #[cfg(feature = "legacy")]
-    fn transform_legacy_metrics(buffer: &str) -> String {
-        buffer
-            .lines()
-            .filter(|line| !line.is_empty())
-            .flat_map(|line| [line, "\n"])
-            .collect()
     }
 
     async fn render(&self) -> Response<String> {
@@ -170,8 +124,6 @@ impl<'a> MetricsExporter<'a> {
             inner: MetricsExporterInner {
                 registry,
                 format: Format::OpenMetricsForPrometheus,
-                #[cfg(feature = "legacy")]
-                legacy_exporter: None,
             },
             shutdown_future: Box::pin(future::pending()),
         }
@@ -211,37 +163,6 @@ impl<'a> MetricsExporter<'a> {
     #[must_use]
     pub fn with_format(mut self, format: Format) -> Self {
         self.inner.format = format;
-        self
-    }
-
-    /// Installs a legacy exporter for the metrics defined using the `metrics` façade. The specified
-    /// closure allows customizing the exporter, e.g. specifying buckets for histograms.
-    ///
-    /// The exporter can only be installed once during app lifetime, so if it was installed previously,
-    /// the same instance will be reused, and the closure won't be called.
-    ///
-    /// # Panics
-    ///
-    /// If `exporter_fn` panics, it is propagated to the caller.
-    #[must_use]
-    #[cfg(feature = "legacy")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "legacy")))]
-    pub fn with_legacy_exporter<F>(mut self, exporter_fn: F) -> Self
-    where
-        F: FnOnce(PrometheusBuilder) -> PrometheusBuilder,
-    {
-        use once_cell::sync::OnceCell;
-
-        static LEGACY_EXPORTER: OnceCell<PrometheusHandle> = OnceCell::new();
-
-        let legacy_exporter = LEGACY_EXPORTER
-            .get_or_try_init(|| {
-                let builder = exporter_fn(PrometheusBuilder::new());
-                builder.install_recorder()
-            })
-            .expect("Failed installing recorder for `metrics` façade");
-
-        self.inner.legacy_exporter = Some(legacy_exporter);
         self
     }
 

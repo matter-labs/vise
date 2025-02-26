@@ -40,18 +40,10 @@ struct TestMetrics {
 #[vise::register]
 static TEST_METRICS: Global<TestMetrics> = Global::new();
 
-#[cfg(feature = "legacy")]
-fn init_legacy_exporter(builder: PrometheusBuilder) -> PrometheusBuilder {
-    let default_buckets = [0.001, 0.005, 0.025, 0.1, 0.25, 1.0, 5.0, 30.0, 120.0];
-    builder.set_buckets(&default_buckets).unwrap()
-}
-
 #[tokio::test]
-async fn legacy_and_modern_metrics_can_coexist() {
+async fn basic_exporter_workflow() {
     let _guard = TEST_MUTEX.lock().await;
     let exporter = MetricsExporter::default();
-    #[cfg(feature = "legacy")]
-    let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
     report_metrics();
 
     let response = exporter.inner.render().await.into_body();
@@ -61,17 +53,6 @@ async fn legacy_and_modern_metrics_can_coexist() {
 fn report_metrics() {
     TEST_METRICS.counter.inc();
     TEST_METRICS.gauge[&Label("value")].set(42.0);
-
-    #[cfg(feature = "legacy")]
-    {
-        metrics::increment_counter!("legacy_counter");
-        metrics::increment_counter!(
-            "legacy_counter_with_labels",
-            "label" => "value",
-            "code" => "3"
-        );
-        metrics::gauge!("legacy_gauge", 23.0, "label" => "value");
-    }
 }
 
 fn assert_scraped_payload_is_valid(payload: &str) {
@@ -84,24 +65,12 @@ fn assert_scraped_payload_is_valid(payload: &str) {
         "# TYPE modern_gauge gauge",
         r#"modern_gauge{label="value"} 42.0"#,
     ];
-    #[cfg(feature = "legacy")]
-    let expected_lines = expected_lines.into_iter().chain([
-        "# TYPE legacy_counter counter",
-        "# TYPE legacy_counter_with_labels counter",
-        "# TYPE legacy_gauge gauge",
-        r#"legacy_gauge{label="value"} 23"#,
-    ]);
     for line in expected_lines {
         assert!(payload_lines.contains(&line), "{payload_lines:#?}");
     }
 
     // Check counter reporting.
     let expected_prefixes = ["modern_counter "];
-    #[cfg(feature = "legacy")]
-    let expected_prefixes = expected_prefixes.into_iter().chain([
-        "legacy_counter ",
-        r#"legacy_counter_with_labels{label="value",code="3"} "#,
-    ]);
     for prefix in expected_prefixes {
         assert!(
             payload_lines.iter().any(|line| line.starts_with(prefix)),
@@ -162,8 +131,6 @@ async fn graceful_shutdown_works_as_expected() {
     let exporter = MetricsExporter::default().with_graceful_shutdown(async move {
         shutdown.changed().await.ok();
     });
-    #[cfg(feature = "legacy")]
-    let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
 
     let bind_address: SocketAddr = (Ipv4Addr::LOCALHOST, 0).into();
     let server = exporter.bind(bind_address).await.unwrap();
@@ -229,8 +196,6 @@ async fn using_push_gateway() {
     });
 
     let exporter = MetricsExporter::default();
-    #[cfg(feature = "legacy")]
-    let exporter = exporter.with_legacy_exporter(init_legacy_exporter);
     report_metrics();
 
     let endpoint = format!("http://{local_addr}/").parse().unwrap();
