@@ -2,7 +2,7 @@
 
 use std::{env, time::Duration};
 
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use tokio::sync::watch;
 use vise::{
     Buckets, Counter, EncodeLabelSet, EncodeLabelValue, Family, Format, Gauge, Histogram, Info,
@@ -59,37 +59,37 @@ struct TestMetrics {
 impl TestMetrics {
     fn generate_metrics(&self, rng: &mut impl Rng) {
         self.counter.inc();
-        self.gauge.set(rng.gen_range(0..1_000_000));
-        self.family_of_gauges[&"call"].set(rng.gen_range(0.0..1.0));
-        self.family_of_gauges[&"send_transaction"].set(rng.gen_range(0.0..1.0));
+        self.gauge.set(rng.random_range(0..1_000_000));
+        self.family_of_gauges[&"call"].set(rng.random_range(0.0..1.0));
+        self.family_of_gauges[&"send_transaction"].set(rng.random_range(0.0..1.0));
 
         for _ in 0..5 {
             self.histogram
-                .observe(Duration::from_millis(rng.gen_range(0..100)));
+                .observe(Duration::from_millis(rng.random_range(0..100)));
             self.family_of_histograms[&Method::Call]
-                .observe(Duration::from_micros(rng.gen_range(0..10_000)));
+                .observe(Duration::from_micros(rng.random_range(0..10_000)));
             self.family_of_histograms[&Method::SendTransaction]
-                .observe(Duration::from_micros(rng.gen_range(0..20_000)));
+                .observe(Duration::from_micros(rng.random_range(0..20_000)));
             self.histograms_with_buckets[&"test"]
-                .observe(Duration::from_millis(rng.gen_range(0..1_000)));
+                .observe(Duration::from_millis(rng.random_range(0..1_000)));
             self.histograms_with_buckets[&"other_test"]
-                .observe(Duration::from_millis(rng.gen_range(0..1_000)));
+                .observe(Duration::from_millis(rng.random_range(0..1_000)));
         }
 
         GROUPED_METRICS[&Method::Call]
             .errors
-            .inc_by(rng.gen_range(0..10));
+            .inc_by(rng.random_range(0..10));
         GROUPED_METRICS[&Method::SendTransaction]
             .errors
-            .inc_by(rng.gen_range(0..2));
+            .inc_by(rng.random_range(0..2));
         for _ in 0..5 {
             GROUPED_METRICS[&Method::Call]
                 .call_latency
-                .observe(Duration::from_millis(rng.gen_range(0..100)));
+                .observe(Duration::from_millis(rng.random_range(0..100)));
         }
         GROUPED_METRICS[&Method::SendTransaction]
             .call_latency
-            .observe(Duration::from_millis(rng.gen_range(0..1_000)));
+            .observe(Duration::from_millis(rng.random_range(0..1_000)));
     }
 }
 
@@ -146,7 +146,7 @@ async fn main() {
         exporter_server.start().await.unwrap();
     });
 
-    let mut rng = thread_rng();
+    let mut rng = rng();
     loop {
         METRICS.generate_metrics(&mut rng);
         tokio::select! {
