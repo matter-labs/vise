@@ -158,6 +158,12 @@ where
     pub fn get_lazy(&self, labels: S) -> LazyItem<'_, S, M> {
         LazyItem::new(&self.0, labels)
     }
+
+    /// Returns all metrics currently present in this family together with the corresponding labels.
+    /// This is inefficient and mostly useful for testing purposes.
+    pub fn to_entries(&self) -> impl ExactSizeIterator<Item = (S, &M)> + '_ {
+        self.0.to_entries()
+    }
 }
 
 impl<S, M> ops::Index<&S> for MetricsFamily<S, M>

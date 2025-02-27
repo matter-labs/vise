@@ -365,7 +365,7 @@ where
             .insert_with(labels.clone(), || Box::new(M::build(self.builder)))
     }
 
-    pub(crate) fn to_entries(&self) -> impl Iterator<Item = (S, &M)> + '_ {
+    pub(crate) fn to_entries(&self) -> impl ExactSizeIterator<Item = (S, &M)> + '_ {
         let labels = self.map.keys_cloned();
         labels.into_iter().map(|key| {
             let metric = self.map.get(&key).unwrap();
@@ -510,9 +510,8 @@ where
 
     /// Returns all metrics currently present in this family together with the corresponding labels.
     /// This is inefficient and mostly useful for testing purposes.
-    #[allow(clippy::missing_panics_doc)] // false positive
-    pub fn to_entries(&self) -> HashMap<S, &M> {
-        self.inner.to_entries().collect()
+    pub fn to_entries(&self) -> impl ExactSizeIterator<Item = (S, &M)> + '_ {
+        self.inner.to_entries()
     }
 }
 

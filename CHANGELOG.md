@@ -13,6 +13,7 @@ The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html)
 ### Changed
 
 - Bump minimum supported Rust version to 1.79 (#30).
+- Change `Family::to_entries()` to return an iterator (#32).
 
 ## 0.2.0 - 2024-08-07
 

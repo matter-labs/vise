@@ -1,6 +1,6 @@
 #![allow(clippy::float_cmp)]
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use assert_matches::assert_matches;
 use derive_more::Display;
@@ -70,6 +70,21 @@ fn testing_metrics() {
     test_metrics.gauge.set(42);
     assert_eq!(test_metrics.gauge.get(), 42);
 
+    assert_eq!(test_metrics.family_of_gauges.to_entries().len(), 0);
+    let lazy = test_metrics.family_of_gauges.get_lazy("call");
+    // The metric instance shouldn't be added immediately.
+    assert_eq!(test_metrics.family_of_gauges.to_entries().len(), 0);
+    lazy.set(0.5);
+    // After access, the instance should be there.
+    assert_eq!(
+        test_metrics
+            .family_of_gauges
+            .to_entries()
+            .map(|(labels, _)| labels)
+            .collect::<Vec<_>>(),
+        ["call"]
+    );
+
     test_metrics.family_of_gauges[&"call"].set(0.4);
     test_metrics.family_of_gauges[&"send_transaction"].set(0.5);
 
@@ -78,7 +93,7 @@ fn testing_metrics() {
     assert_eq!(gauge.get(), 0.4);
     assert!(!test_metrics.family_of_gauges.contains(&"test"));
 
-    let gauges_in_family = test_metrics.family_of_gauges.to_entries();
+    let gauges_in_family: HashMap<_, _> = test_metrics.family_of_gauges.to_entries().collect();
     assert_eq!(gauges_in_family.len(), 2);
     assert_eq!(gauges_in_family[&"call"].get(), 0.4);
     assert_eq!(gauges_in_family[&"send_transaction"].get(), 0.5);
@@ -224,10 +239,19 @@ fn group_registration() {
     GROUP_METRICS[&Method("eth_call")].return_codes[&0].inc_by(5);
     GROUP_METRICS[&Method("eth_call")].return_codes[&3].inc_by(2);
     GROUP_METRICS[&Method("eth_call")].return_codes[&-2].inc();
-    GROUP_METRICS[&Method("eth_blockNumber")]
-        .latency
-        .observe(Duration::from_millis(200));
-    GROUP_METRICS[&Method("eth_blockNumber")].return_codes[&0].inc_by(7);
+
+    let lazy = GROUP_METRICS.get_lazy(Method("eth_blockNumber"));
+    assert_eq!(
+        GROUP_METRICS
+            .to_entries()
+            .map(|(labels, _)| labels)
+            .collect::<Vec<_>>(),
+        [Method("eth_call")]
+    );
+
+    lazy.latency.observe(Duration::from_millis(200));
+    lazy.return_codes[&0].inc_by(7);
+    assert_eq!(GROUP_METRICS.to_entries().len(), 2);
 
     let mut buffer = String::new();
     registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
