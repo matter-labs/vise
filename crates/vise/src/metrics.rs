@@ -4,7 +4,14 @@ use std::{fmt, hash::Hash, ops, sync::Arc};
 
 use once_cell::sync::Lazy;
 
-use crate::{descriptors::MetricGroupDescriptor, encoding::LabelGroups, LazyItem, registry::{CollectToRegistry, MetricsVisitor, Registry}, traits::EncodeLabelSet, wrappers::FamilyInner};
+use crate::{
+    descriptors::MetricGroupDescriptor,
+    encoding::LabelGroups,
+    registry::{CollectToRegistry, MetricsVisitor, Registry},
+    traits::EncodeLabelSet,
+    wrappers::FamilyInner,
+    LazyItem,
+};
 
 /// Collection of metrics for a library or application. Should be derived using the corresponding macro.
 pub trait Metrics: 'static + Send + Sync {

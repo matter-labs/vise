@@ -397,7 +397,7 @@ pub use crate::{
     },
     wrappers::{
         DurationAsSecs, Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily,
-        LatencyObserver, SetInfoError, LazyItem,
+        LatencyObserver, LazyItem, SetInfoError,
     },
 };
 
