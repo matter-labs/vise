@@ -8,6 +8,7 @@ The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html)
 ### Added
 
 - Allow sharing common label set among multiple metrics using an interface similar to `Family` (#30).
+- Implement lazy getter for `Family` / `MetricsFamily` (#32).
 
 ### Changed
 
