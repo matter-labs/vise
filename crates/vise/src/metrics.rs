@@ -4,13 +4,7 @@ use std::{fmt, hash::Hash, ops, sync::Arc};
 
 use once_cell::sync::Lazy;
 
-use crate::{
-    descriptors::MetricGroupDescriptor,
-    encoding::LabelGroups,
-    registry::{CollectToRegistry, MetricsVisitor, Registry},
-    traits::EncodeLabelSet,
-    wrappers::FamilyInner,
-};
+use crate::{descriptors::MetricGroupDescriptor, encoding::LabelGroups, LazyItem, registry::{CollectToRegistry, MetricsVisitor, Registry}, traits::EncodeLabelSet, wrappers::FamilyInner};
 
 /// Collection of metrics for a library or application. Should be derived using the corresponding macro.
 pub trait Metrics: 'static + Send + Sync {
@@ -149,6 +143,13 @@ where
     /// Creates a new metrics family.
     pub const fn new() -> Self {
         Self(Lazy::new(|| FamilyInner::new(())))
+    }
+
+    /// Gets or creates metrics with the specified labels *lazily* (i.e., on first access). This is useful
+    /// if the metrics are updated conditionally and the condition is somewhat rare; in this case, indexing can
+    /// unnecessarily blow up the number of metrics in the family.
+    pub fn get_lazy(&self, labels: S) -> LazyItem<'_, S, M> {
+        LazyItem::new(&self.0, labels)
     }
 }
 
