@@ -44,15 +44,7 @@ allow = [
 multiple-versions = "deny"
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
-  # Old version used by `metrics-util`. A newer version is used by `version-sync` (a dev dependency).
-  { name = "hashbrown", version = "^0.13" },
-  # Old version used by several crates. Largely a codegen dep, so using multiple versions shouldn't
-  # be very problematic.
-  { name = "bitflags", version = "^1" },
-]
-skip-tree = [
-  # Old version used by `metrics`
-  { name = "indexmap", version = "^1" },
+  { name = "zerocopy", version = "^0.7" },
 ]
 
 [sources]
