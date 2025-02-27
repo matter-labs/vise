@@ -12,6 +12,11 @@ The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html)
 ### Changed
 
 - Bump minimum supported Rust version to 1.79 (#30).
+- **exporter:** Make `MetricsExporter::bind()` method async (#31).
+
+### Removed
+
+- Remove legacy metrics support (#31).
 
 ## 0.2.0 - 2024-08-07
 
