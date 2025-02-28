@@ -10,6 +10,7 @@ use crate::{
     registry::{CollectToRegistry, MetricsVisitor, Registry},
     traits::EncodeLabelSet,
     wrappers::FamilyInner,
+    LazyItem,
 };
 
 /// Collection of metrics for a library or application. Should be derived using the corresponding macro.
@@ -149,6 +150,19 @@ where
     /// Creates a new metrics family.
     pub const fn new() -> Self {
         Self(Lazy::new(|| FamilyInner::new(())))
+    }
+
+    /// Gets or creates metrics with the specified labels *lazily* (i.e., on first access). This is useful
+    /// if the metrics are updated conditionally and the condition is somewhat rare; in this case, indexing can
+    /// unnecessarily blow up the number of metrics in the family.
+    pub fn get_lazy(&self, labels: S) -> LazyItem<'_, S, M> {
+        LazyItem::new(&self.0, labels)
+    }
+
+    /// Returns all metrics currently present in this family together with the corresponding labels.
+    /// This is inefficient and mostly useful for testing purposes.
+    pub fn to_entries(&self) -> impl ExactSizeIterator<Item = (S, &M)> + '_ {
+        self.0.to_entries()
     }
 }
 

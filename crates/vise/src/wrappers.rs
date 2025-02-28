@@ -365,7 +365,7 @@ where
             .insert_with(labels.clone(), || Box::new(M::build(self.builder)))
     }
 
-    pub(crate) fn to_entries(&self) -> impl Iterator<Item = (S, &M)> + '_ {
+    pub(crate) fn to_entries(&self) -> impl ExactSizeIterator<Item = (S, &M)> + '_ {
         let labels = self.map.keys_cloned();
         labels.into_iter().map(|key| {
             let metric = self.map.get(&key).unwrap();
@@ -501,11 +501,17 @@ where
         self.inner.map.get(labels)
     }
 
+    /// Gets or creates a metric with the specified labels *lazily* (i.e., on first access). This is useful
+    /// if the metric is updated conditionally and the condition is somewhat rare; in this case, indexing can
+    /// unnecessarily blow up the number of metrics in the family.
+    pub fn get_lazy(&self, labels: S) -> LazyItem<'_, S, M> {
+        LazyItem::new(&self.inner, labels)
+    }
+
     /// Returns all metrics currently present in this family together with the corresponding labels.
     /// This is inefficient and mostly useful for testing purposes.
-    #[allow(clippy::missing_panics_doc)] // false positive
-    pub fn to_entries(&self) -> HashMap<S, &M> {
-        self.inner.to_entries().collect()
+    pub fn to_entries(&self) -> impl ExactSizeIterator<Item = (S, &M)> + '_ {
+        self.inner.to_entries()
     }
 }
 
@@ -519,6 +525,55 @@ where
 
     fn index(&self, labels: &S) -> &Self::Output {
         self.inner.get_or_create(labels)
+    }
+}
+
+/// Lazily accessed member of a [`Family`] or [`MetricsFamily`](crate::MetricsFamily). Returned
+/// by `get_lazy()` methods.
+pub struct LazyItem<'a, S, M: BuildMetric> {
+    family: &'a FamilyInner<S, M>,
+    labels: S,
+}
+
+impl<'a, S, M: BuildMetric> LazyItem<'a, S, M> {
+    pub(crate) fn new(family: &'a FamilyInner<S, M>, labels: S) -> Self {
+        Self { family, labels }
+    }
+}
+
+impl<S, M> fmt::Debug for LazyItem<'_, S, M>
+where
+    S: fmt::Debug + Clone + Eq + Hash,
+    M: BuildMetric + fmt::Debug,
+    M::Builder: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LazyItem")
+            .field("family", self.family)
+            .field("labels", &self.labels)
+            .finish()
+    }
+}
+
+impl<S: Clone, M: BuildMetric> Clone for LazyItem<'_, S, M> {
+    fn clone(&self) -> Self {
+        Self {
+            family: self.family,
+            labels: self.labels.clone(),
+        }
+    }
+}
+
+impl<S, M> ops::Deref for LazyItem<'_, S, M>
+where
+    S: Clone + Eq + Hash,
+    M: BuildMetric,
+{
+    type Target = M;
+
+    fn deref(&self) -> &Self::Target {
+        self.family.get_or_create(&self.labels)
     }
 }
 

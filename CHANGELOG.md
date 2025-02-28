@@ -8,11 +8,13 @@ The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html)
 ### Added
 
 - Allow sharing common label set among multiple metrics using an interface similar to `Family` (#30).
+- Implement lazy getter for `Family` / `MetricsFamily` (#32).
 
 ### Changed
 
 - Bump minimum supported Rust version to 1.79 (#30).
 - **exporter:** Make `MetricsExporter::bind()` method async (#31).
+- Change `Family::to_entries()` to return an iterator (#32).
 
 ### Removed
 
