@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["EncodedGaugeValue"],"struct":["AtomicIsizeWrapper","AtomicU64Wrapper","AtomicUsizeWrapper","LabelRef","StaticLabelSet"],"trait":["EncodeLabelSet","GaugeValue","HistogramValue","MapLabels"]};

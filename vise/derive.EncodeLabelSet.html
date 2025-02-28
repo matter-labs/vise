@@ -1,0 +1,65 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Derives the `EncodeLabelSet` trait for a type, which encodes a set of metric labels."><title>EncodeLabelSet in vise - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="vise" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../static.files/storage-118b08c4c78b968e.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc derive"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../vise/index.html">vise</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"></div></nav><div class="sidebar-resizer"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1>Derive Macro <a href="index.html">vise</a>::<wbr><a class="derive" href="#">EncodeLabelSet</a><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><span class="out-of-band"><a class="src" href="../src/vise_macros/lib.rs.html#37">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><pre class="rust item-decl"><code>#[derive(EncodeLabelSet)]
+{
+    <span class="comment">// Attributes available to this derive:</span>
+    #[metrics]
+}
+</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Derives the <a href="traits/trait.EncodeLabelSet.html" title="trait vise::traits::EncodeLabelSet"><code>EncodeLabelSet</code></a> trait for a type, which encodes a set of metric labels.</p>
+<p>The type for which the trait is derived must not have generics (lifetimes, type params or const params).
+The macro can be configured using <code>#[metrics()]</code> attributes.</p>
+<h2 id="container-attributes"><a class="doc-anchor" href="#container-attributes">§</a>Container attributes</h2><h3 id="label"><a class="doc-anchor" href="#label">§</a><code>label</code></h3>
+<p><strong>Type:</strong> string</p>
+<p>If specified, the type will be treated as a single label with the given name. This covers
+the common case in which a label set consists of a single label. In this case, the type
+also needs to implement <a href="derive.EncodeLabelValue.html" title="derive vise::EncodeLabelValue"><code>EncodeLabelValue</code></a>.</p>
+<p>If this attribute is not specified (which is the default), a container must be a <code>struct</code>
+with named fields. A label with the matching name will be created for each field.</p>
+<h2 id="field-attributes"><a class="doc-anchor" href="#field-attributes">§</a>Field attributes</h2><h3 id="skip"><a class="doc-anchor" href="#skip">§</a><code>skip</code></h3>
+<p><strong>Type:</strong> path to a function with <code>fn(&amp;FieldType) -&gt; bool</code> signature</p>
+<p>This attribute works similarly to <code>skip_serializing_if</code> in <code>serde</code> – if the function it points
+to returns <code>true</code> for the field value, the field will not be encoded as a label.</p>
+<p><code>Option</code> fields are skipped by default if they are <code>None</code> (i.e., they use <code>skip = Option::is_none</code>).</p>
+<h3 id="unit"><a class="doc-anchor" href="#unit">§</a><code>unit</code></h3>
+<p><strong>Type:</strong> expression evaluating to <a href="enum.Unit.html" title="enum vise::Unit"><code>Unit</code></a></p>
+<p>Specifies unit of measurement for a label. The unit will be added to the label name as a suffix
+(e.g., <code>timeout_seconds</code> if placed on a field named <code>timeout</code>). This is mostly useful for <a href="struct.Info.html" title="struct vise::Info"><code>Info</code></a> metrics.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2><h3 id="set-with-a-single-label"><a class="doc-anchor" href="#set-with-a-single-label">§</a>Set with a single label</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>derive_more::Display;
+<span class="kw">use </span>vise::{EncodeLabelSet, EncodeLabelValue};
+
+<span class="attr">#[derive(Debug, Display, Clone, PartialEq, Eq, Hash)]
+#[derive(EncodeLabelValue, EncodeLabelSet)]
+#[metrics(label = <span class="string">"method"</span>)]
+</span><span class="kw">struct </span>Method(<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str);</code></pre></div>
+<h3 id="set-with-multiple-labels"><a class="doc-anchor" href="#set-with-multiple-labels">§</a>Set with multiple labels</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet)]
+</span><span class="kw">struct </span>Labels {
+    <span class="doccomment">/// Label that is skipped when empty.
+    </span><span class="attr">#[metrics(skip = str::is_empty)]
+    </span>name: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str,
+    <span class="doccomment">/// Numeric label.
+    </span>num: u8,
+}</code></pre></div>
+<h3 id="set-for-info-metric"><a class="doc-anchor" href="#set-for-info-metric">§</a>Set for info metric</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>vise::{EncodeLabelSet, DurationAsSecs, Unit};
+<span class="kw">use </span>std::time::Duration;
+
+<span class="attr">#[derive(Debug, EncodeLabelSet)]
+</span><span class="kw">struct </span>InfoLabels {
+    <span class="doccomment">/// Simple label.
+    </span>version: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str,
+    <span class="doccomment">/// Label with a unit.
+    </span><span class="attr">#[metrics(unit = Unit::Seconds)]
+    </span>request_timeout: DurationAsSecs,
+    <span class="doccomment">/// Another label with a unit.
+    </span><span class="attr">#[metrics(unit = Unit::Bytes)]
+    </span>buffer_capacity: u64,
+}
+
+<span class="kw">let </span>labels = InfoLabels {
+    version: <span class="string">"0.1.0"</span>,
+    request_timeout: Duration::from_millis(<span class="number">100</span>).into(),
+    buffer_capacity: <span class="number">1_024</span>,
+};
+<span class="comment">// will be exported as the following labels:
+// { version="0.1.0", request_timeout_seconds="0.1", buffer_capacity="1024" }</span></code></pre></div>
+</div></details></section></div></main></body></html>
