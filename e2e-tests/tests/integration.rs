@@ -172,13 +172,10 @@ fn init_logging() {
         .ok();
 }
 
-async fn start_app(legacy_metrics: bool, prom_format: bool) -> anyhow::Result<(Child, u16)> {
+async fn start_app(prom_format: bool) -> anyhow::Result<(Child, u16)> {
     let binary = env!(concat!("CARGO_BIN_EXE_", env!("CARGO_PKG_NAME")));
     tracing::info!("Running binary `{binary}`");
     let mut command = Command::new(binary);
-    if legacy_metrics {
-        command.arg("--legacy");
-    }
     if prom_format {
         command.arg("--format-prometheus");
     }
@@ -210,10 +207,10 @@ async fn start_app(legacy_metrics: bool, prom_format: bool) -> anyhow::Result<(C
 }
 
 #[tracing::instrument(level = "info", err)]
-async fn test_app(legacy_metrics: bool, prom_format: bool) -> anyhow::Result<()> {
+async fn test_app(prom_format: bool) -> anyhow::Result<()> {
     init_logging();
 
-    let (_app_process, app_port) = start_app(legacy_metrics, prom_format).await?;
+    let (_app_process, app_port) = start_app(prom_format).await?;
 
     let temp_dir = tempfile::tempdir().context("Failed creating temp dir")?;
     let container = PrometheusContainer::new(temp_dir.path(), app_port).await?;
@@ -223,9 +220,6 @@ async fn test_app(legacy_metrics: bool, prom_format: bool) -> anyhow::Result<()>
     let client: Client = format!("http://localhost:{prom_port}/").parse()?;
     assert!(client.is_server_healthy().await.unwrap());
     assert_metrics(&client, prom_format).await?;
-    if legacy_metrics {
-        assert_legacy_metrics(&client).await?;
-    }
     Ok(())
 }
 
@@ -377,63 +371,12 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
     Ok(())
 }
 
-async fn assert_legacy_metrics(client: &Client) -> anyhow::Result<()> {
-    let metadata = client
-        .metric_metadata()
-        .metric("legacy_counter")
-        .get()
-        .await?;
-    tracing::info!(?metadata, "Got metadata for legacy counter");
-    let metadata = &metadata["legacy_counter"][0];
-    assert_matches!(metadata.metric_type(), MetricType::Counter);
-
-    let gauge_result = client.query("legacy_gauge").get().await?;
-    tracing::info!(?gauge_result, "Got result for query: legacy_gauge");
-    let gauge_vec = gauge_result
-        .data()
-        .as_vector()
-        .context("Gauge data is not a vector")?;
-    let gauge_value = gauge_vec[0].sample().value();
-    assert!(
-        (0.0..=1_000_000.0).contains(&gauge_value),
-        "{gauge_result:#?}"
-    );
-
-    let family_result = client
-        .query("legacy_family_of_gauges{method=\"call\"}")
-        .get()
-        .await?;
-    tracing::info!(
-        ?gauge_result,
-        "Got result for query: legacy_family_of_gauges{{method=\"call\"}}"
-    );
-    let gauge_vec = family_result
-        .data()
-        .as_vector()
-        .context("Gauge data is not a vector")?;
-    let gauge_value = gauge_vec[0].sample().value();
-    assert!((0.0..=1.0).contains(&gauge_value), "{family_result:#?}");
-    assert_eq!(gauge_vec[0].metric()["method"], "call");
-
-    Ok(())
-}
-
 #[tokio::test]
 async fn scraping_app() -> anyhow::Result<()> {
-    test_app(false, false).await
+    test_app(false).await
 }
 
 #[tokio::test]
 async fn scraping_app_in_prom_format() -> anyhow::Result<()> {
-    test_app(false, true).await
-}
-
-#[tokio::test]
-async fn scraping_app_with_legacy_metrics() -> anyhow::Result<()> {
-    test_app(true, false).await
-}
-
-#[tokio::test]
-async fn scraping_app_with_legacy_metrics_and_prom_format() -> anyhow::Result<()> {
-    test_app(true, true).await
+    test_app(true).await
 }

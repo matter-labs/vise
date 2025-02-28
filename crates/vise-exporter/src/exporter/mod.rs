@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashSet,
+    convert::Infallible,
     fmt::{self, Write as _},
     future::{self, Future},
     net::SocketAddr,
@@ -11,32 +12,32 @@ use std::{
     time::{Duration, Instant},
 };
 
+use http_body_util::BodyExt as _;
 use hyper::{
-    body, header,
-    service::{make_service_fn, service_fn},
-    Body, Client, Method, Request, Response, Server, StatusCode, Uri,
+    body::Incoming, header, server::conn::http1, service::service_fn, Method, Request, Response,
+    StatusCode, Uri,
 };
-#[cfg(feature = "legacy")]
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-
-#[cfg(test)]
-mod tests;
-
+use hyper_util::{
+    client::legacy::Client,
+    rt::{TokioExecutor, TokioIo},
+};
+use tokio::{io, net::TcpListener, sync::watch};
 use vise::{Format, MetricsCollection, Registry};
 
 use crate::metrics::{Facade, EXPORTER_METRICS};
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone)]
 struct MetricsExporterInner {
     registry: Arc<Registry>,
     format: Format,
-    #[cfg(feature = "legacy")]
-    legacy_exporter: Option<&'static PrometheusHandle>,
 }
 
 impl MetricsExporterInner {
-    async fn render_body(&self) -> Body {
-        let mut buffer = self.scrape_legacy_metrics();
+    async fn render_body(&self) -> String {
+        let mut buffer = String::new();
 
         let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
         let registry = Arc::clone(&self.registry);
@@ -65,52 +66,10 @@ impl MetricsExporterInner {
         // Concatenate buffers. Since `legacy_buffer` ends with a newline (if it isn't empty),
         // we don't need to add a newline.
         buffer.push_str(&new_buffer);
-        Body::from(buffer)
-    }
-
-    #[cfg(feature = "legacy")]
-    fn scrape_legacy_metrics(&self) -> String {
-        let latency = EXPORTER_METRICS.scrape_latency[&Facade::Metrics].start();
-        let buffer = if let Some(legacy_exporter) = self.legacy_exporter {
-            Self::transform_legacy_metrics(&legacy_exporter.render())
-        } else {
-            String::new()
-        };
-
-        let latency = latency.observe();
-        let scraped_size = buffer.len();
-        EXPORTER_METRICS.scraped_size[&Facade::Metrics].observe(scraped_size);
-        tracing::debug!(
-            latency_sec = latency.as_secs_f64(),
-            scraped_size,
-            "Scraped metrics using `metrics` façade in {latency:?} (scraped size: {scraped_size}B)"
-        );
         buffer
     }
 
-    #[cfg(not(feature = "legacy"))]
-    #[allow(clippy::unused_self)] // required for consistency with the real method
-    fn scrape_legacy_metrics(&self) -> String {
-        String::new()
-    }
-
-    /// Transforms legacy metrics from the Prometheus text format to the OpenMetrics one.
-    /// The output format is still accepted by Prometheus.
-    ///
-    /// This transform:
-    ///
-    /// - Removes empty lines from `buffer`; they are fine for Prometheus, but run contrary
-    ///   to the OpenMetrics text format spec.
-    #[cfg(feature = "legacy")]
-    fn transform_legacy_metrics(buffer: &str) -> String {
-        buffer
-            .lines()
-            .filter(|line| !line.is_empty())
-            .flat_map(|line| [line, "\n"])
-            .collect()
-    }
-
-    async fn render(&self) -> Response<Body> {
+    async fn render(&self) -> Response<String> {
         let content_type = if matches!(self.format, Format::Prometheus) {
             Format::PROMETHEUS_CONTENT_TYPE
         } else {
@@ -165,8 +124,6 @@ impl<'a> MetricsExporter<'a> {
             inner: MetricsExporterInner {
                 registry,
                 format: Format::OpenMetricsForPrometheus,
-                #[cfg(feature = "legacy")]
-                legacy_exporter: None,
             },
             shutdown_future: Box::pin(future::pending()),
         }
@@ -209,37 +166,6 @@ impl<'a> MetricsExporter<'a> {
         self
     }
 
-    /// Installs a legacy exporter for the metrics defined using the `metrics` façade. The specified
-    /// closure allows customizing the exporter, e.g. specifying buckets for histograms.
-    ///
-    /// The exporter can only be installed once during app lifetime, so if it was installed previously,
-    /// the same instance will be reused, and the closure won't be called.
-    ///
-    /// # Panics
-    ///
-    /// If `exporter_fn` panics, it is propagated to the caller.
-    #[must_use]
-    #[cfg(feature = "legacy")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "legacy")))]
-    pub fn with_legacy_exporter<F>(mut self, exporter_fn: F) -> Self
-    where
-        F: FnOnce(PrometheusBuilder) -> PrometheusBuilder,
-    {
-        use once_cell::sync::OnceCell;
-
-        static LEGACY_EXPORTER: OnceCell<PrometheusHandle> = OnceCell::new();
-
-        let legacy_exporter = LEGACY_EXPORTER
-            .get_or_try_init(|| {
-                let builder = exporter_fn(PrometheusBuilder::new());
-                builder.install_recorder()
-            })
-            .expect("Failed installing recorder for `metrics` façade");
-
-        self.inner.legacy_exporter = Some(legacy_exporter);
-        self
-    }
-
     /// Configures graceful shutdown for the exporter server.
     #[must_use]
     pub fn with_graceful_shutdown<F>(mut self, shutdown: F) -> Self
@@ -259,9 +185,9 @@ impl<'a> MetricsExporter<'a> {
     /// # Errors
     ///
     /// Returns an error if binding to the specified address fails.
-    pub async fn start(self, bind_address: SocketAddr) -> hyper::Result<()> {
+    pub async fn start(self, bind_address: SocketAddr) -> io::Result<()> {
         tracing::info!("Starting Prometheus exporter web server on {bind_address}");
-        self.bind(bind_address)?.start().await?;
+        self.bind(bind_address).await?.start().await?;
         tracing::info!("Prometheus metrics exporter server shut down");
         Ok(())
     }
@@ -271,20 +197,50 @@ impl<'a> MetricsExporter<'a> {
     /// # Errors
     ///
     /// Returns an error if binding to the specified address fails.
-    pub fn bind(self, bind_address: SocketAddr) -> hyper::Result<MetricsServer<'a>> {
-        let server = Server::try_bind(&bind_address)?.serve(make_service_fn(move |_| {
-            let inner = self.inner.clone();
-            future::ready(Ok::<_, hyper::Error>(service_fn(move |_| {
-                let inner = inner.clone();
-                async move { Ok::<_, hyper::Error>(inner.render().await) }
-            })))
-        }));
-        let local_addr = server.local_addr();
+    pub async fn bind(mut self, bind_address: SocketAddr) -> io::Result<MetricsServer<'a>> {
+        let listener = TcpListener::bind(bind_address).await?;
+        let local_addr = listener.local_addr()?;
+        let server = async move {
+            let (started_shutdown_sender, started_shutdown) = watch::channel(());
+            loop {
+                let stream = tokio::select! {
+                    res = listener.accept() => res?.0,
+                    () = &mut self.shutdown_future => break,
+                };
 
-        let server = server.with_graceful_shutdown(async move {
-            self.shutdown_future.await;
+                let io = TokioIo::new(stream);
+                let inner = self.inner.clone();
+                let mut started_shutdown = started_shutdown.clone();
+                tokio::spawn(async move {
+                    let conn = http1::Builder::new().serve_connection(
+                        io,
+                        service_fn(|_| async { Ok::<_, Infallible>(inner.render().await) }),
+                    );
+                    tokio::pin!(conn);
+
+                    let res = tokio::select! {
+                        _ = started_shutdown.changed() => {
+                            conn.as_mut().graceful_shutdown();
+                            conn.await
+                        }
+                        res = conn.as_mut() => res,
+                    };
+                    if let Err(err) = res {
+                        tracing::warn!(%err, "Error serving connection");
+                    }
+                });
+            }
+
             tracing::info!("Stop signal received, Prometheus metrics exporter is shutting down");
-        });
+            // Send the graceful shutdown signal to all alive connections.
+            drop(started_shutdown);
+            started_shutdown_sender.send_replace(());
+            // Wait until all connections are dropped.
+            started_shutdown_sender.closed().await;
+
+            Ok(())
+        };
+
         Ok(MetricsServer {
             server: Box::pin(server),
             local_addr,
@@ -302,7 +258,7 @@ impl<'a> MetricsExporter<'a> {
             "Starting push-based Prometheus exporter to `{endpoint}` with push interval {interval:?}"
         );
 
-        let client = Client::new();
+        let client = Client::builder(TokioExecutor::new()).build_http();
         let mut shutdown = self.shutdown_future;
         let mut last_error_log_timestamp = None::<Instant>;
         loop {
@@ -355,10 +311,11 @@ impl<'a> MetricsExporter<'a> {
     }
 }
 
-async fn report_erroneous_response(endpoint: Uri, response: Response<Body>) {
+async fn report_erroneous_response(endpoint: Uri, response: Response<Incoming>) {
     let status = response.status();
-    let body = match body::to_bytes(response.into_body()).await {
-        Ok(body) => body,
+
+    let body = match response.into_body().collect().await {
+        Ok(body) => body.to_bytes(),
         Err(err) => {
             tracing::error!(
                 %err,
@@ -392,7 +349,7 @@ async fn report_erroneous_response(endpoint: Uri, response: Response<Body>) {
 /// Useful e.g. if you need to find out which port the server was bound to if the 0th port was specified.
 #[must_use = "Server should be `start()`ed"]
 pub struct MetricsServer<'a> {
-    server: Pin<Box<dyn Future<Output = hyper::Result<()>> + Send + 'a>>,
+    server: Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'a>>,
     local_addr: SocketAddr,
 }
 
@@ -411,12 +368,12 @@ impl MetricsServer<'_> {
         self.local_addr
     }
 
-    /// Starts this server.
+    /// Starts this server. Resolves once the server is shut down.
     ///
     /// # Errors
     ///
     /// Returns an error if starting the server operation fails.
-    pub async fn start(self) -> hyper::Result<()> {
+    pub async fn start(self) -> io::Result<()> {
         self.server.await
     }
 }

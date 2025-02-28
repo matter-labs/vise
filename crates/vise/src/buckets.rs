@@ -279,8 +279,8 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(SEED);
         for _ in 0..100_000 {
-            let lhs: f64 = rng.gen();
-            let rhs: f64 = rng.gen();
+            let lhs: f64 = rng.random();
+            let rhs: f64 = rng.random();
             if lhs.is_subnormal() || rhs.is_subnormal() {
                 continue;
             }
@@ -293,8 +293,8 @@ mod tests {
         }
 
         for _ in 0..100_000 {
-            let lhs: f64 = rng.gen_range(-1.0..=1.0);
-            let rhs: f64 = rng.gen_range(-1.0..=1.0);
+            let lhs: f64 = rng.random_range(-1.0..=1.0);
+            let rhs: f64 = rng.random_range(-1.0..=1.0);
 
             assert_eq!(
                 lhs.partial_cmp(&rhs),

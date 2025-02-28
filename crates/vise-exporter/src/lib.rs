@@ -4,15 +4,6 @@
 //! running a web server or pushing to the Prometheus push gateway. An exporter should only be initialized
 //! in applications, not libraries.
 //!
-//! # Crate features
-//!
-//! ## `legacy`
-//!
-//! *(Off by default)*
-//!
-//! Enables exporting metrics defined with the `metrics` façade, in addition to those defined
-//! using `vise`.
-//!
 //! # Examples
 //!
 //! Running a pull-based exporter with graceful shutdown:
@@ -58,10 +49,6 @@
 #![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::must_use_candidate, clippy::module_name_repetitions)]
-
-// Reexport to simplify configuring legacy exporter.
-#[cfg(feature = "legacy")]
-pub use metrics_exporter_prometheus;
 
 mod exporter;
 mod metrics;

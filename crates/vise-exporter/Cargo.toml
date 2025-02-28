@@ -19,21 +19,16 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 vise = { version = "0.2.0", path = "../vise" }
 
+http-body-util.workspace = true
 hyper.workspace = true
-metrics-exporter-prometheus = { workspace = true, optional = true }
+hyper-util.workspace = true
 once_cell.workspace = true
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["time", "macros"] }
 tracing.workspace = true
 
 [dev-dependencies]
 doc-comment.workspace = true
-metrics.workspace = true
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt"] }
 tracing-capture.workspace = true
 tracing-subscriber.workspace = true
 version-sync.workspace = true
-
-[features]
-default = []
-# Enables exporting metrics defined with the `metrics` façade
-legacy = ["metrics-exporter-prometheus"]
