@@ -22,7 +22,7 @@ prometheus-client.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true
-derive_more.workspace = true
+derive_more = { workspace = true, features = ["display"] }
 doc-comment.workspace = true
 rand.workspace = true
 trybuild.workspace = true
