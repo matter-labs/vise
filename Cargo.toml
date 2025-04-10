@@ -18,6 +18,10 @@ keywords = ["metrics", "monitoring", "openmetrics", "prometheus"]
 categories = ["development-tools"]
 
 [workspace.dependencies]
+
+vise-macros = { version = "=0.2.0", path = "crates/vise-macros" }
+vise = { version = "=0.2.0", path = "crates/vise" }
+
 anyhow = "1.0"
 assert_matches = "1.5.0"
 compile-fmt = "0.1.0"

@@ -12,8 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-vise-macros = { version = "=0.2.0", path = "../vise-macros" }
-
+vise-macros.workspace = true
 compile-fmt.workspace = true
 elsa.workspace = true
 ctor.workspace = true
