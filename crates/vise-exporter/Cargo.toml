@@ -17,8 +17,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-vise = { version = "0.2.0", path = "../vise" }
-
+vise.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
