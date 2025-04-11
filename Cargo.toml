@@ -19,8 +19,8 @@ categories = ["development-tools"]
 
 [workspace.dependencies]
 
-vise-macros = { version = "=0.2.0", path = "crates/vise-macros" }
-vise = { version = "=0.2.0", path = "crates/vise" }
+vise-macros = { version = "=0.3.0", path = "crates/vise-macros" }
+vise = { version = "=0.3.0", path = "crates/vise" }
 
 anyhow = "1.0"
 assert_matches = "1.5.0"
