@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file.
 The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/matter-labs/vise/compare/v0.2.0...v0.3.0) (2025-04-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* Implement lazy getter for families ([#32](https://github.com/matter-labs/vise/issues/32))
+* Update dependencies ([#31](https://github.com/matter-labs/vise/issues/31))
+* Share common labels among metrics ([#30](https://github.com/matter-labs/vise/issues/30))
+
+### Features
+
+* Implement lazy getter for families ([#32](https://github.com/matter-labs/vise/issues/32)) ([51669f4](https://github.com/matter-labs/vise/commit/51669f42f60c50b3a521662a4ecd71212a303299))
+* Share common labels among metrics ([#30](https://github.com/matter-labs/vise/issues/30)) ([6c010a6](https://github.com/matter-labs/vise/commit/6c010a683de9750fb61ca2d30630d79afbe743d8))
+
+
+### Bug Fixes
+
+* add release-please config and workflows ([#35](https://github.com/matter-labs/vise/issues/35)) ([5c5dc01](https://github.com/matter-labs/vise/commit/5c5dc01aac57a2695b57e4574b6a885e5bfa1107))
+
+
+### Miscellaneous Chores
+
+* Update dependencies ([#31](https://github.com/matter-labs/vise/issues/31)) ([2ce1d69](https://github.com/matter-labs/vise/commit/2ce1d69a12a011fa1f9dfe10f50393cb3203c24d))
+
 ## [Unreleased]
 
 ### Added
