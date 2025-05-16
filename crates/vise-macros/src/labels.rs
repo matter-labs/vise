@@ -401,7 +401,10 @@ impl LabelField {
             let mut key_encoder = label_encoder.encode_label_key()?;
             #encoding::EncodeLabelKey::encode(&#label, &mut key_encoder)?;
             let mut value_encoder = key_encoder.encode_label_value()?;
-            #encoding::EncodeLabelValue::encode(&self.#name, &mut value_encoder)?;
+            {
+                let _guard = #cr::_private::EncodingContext::LabelValue.enter();
+                #encoding::EncodeLabelValue::encode(&self.#name, &mut value_encoder)?;
+            }
             value_encoder.finish()?;
         };
         if let Some(skip) = skip {
@@ -477,7 +480,10 @@ impl EncodeLabelSetImpl {
                 let mut key_encoder = label_encoder.encode_label_key()?;
                 #encoding::EncodeLabelKey::encode(&#label, &mut key_encoder)?;
                 let mut value_encoder = key_encoder.encode_label_value()?;
-                #encoding::EncodeLabelValue::encode(self, &mut value_encoder)?;
+                {
+                    let _guard = #cr::_private::EncodingContext::LabelValue.enter();
+                    #encoding::EncodeLabelValue::encode(self, &mut value_encoder)?;
+                }
                 value_encoder.finish()
             }
         } else {

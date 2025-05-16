@@ -12,7 +12,7 @@ use crate::{
     collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
     encoding::GroupedMetric,
-    format::{Format, PrometheusWrapper},
+    format::{EscapeWrapper, Format, PrometheusWrapper},
     Metrics,
 };
 
@@ -268,6 +268,7 @@ impl Registry {
     ///
     /// Proxies formatting errors of the provided `writer`.
     pub fn encode<W: fmt::Write>(&self, writer: &mut W, format: Format) -> fmt::Result {
+        let mut writer = EscapeWrapper::new(writer);
         match format {
             Format::Prometheus | Format::OpenMetricsForPrometheus => {
                 let mut wrapper = PrometheusWrapper::new(writer);
@@ -278,7 +279,7 @@ impl Registry {
                 text::encode(&mut wrapper, &self.inner)?;
                 wrapper.flush()
             }
-            Format::OpenMetrics => text::encode(writer, &self.inner),
+            Format::OpenMetrics => text::encode(&mut writer, &self.inner),
         }
     }
 }

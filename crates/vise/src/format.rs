@@ -1,8 +1,75 @@
 //! Support for various metrics encoding formats.
 
-use std::{fmt, mem};
+use std::{cell::Cell, fmt, marker::PhantomData, mem};
 
 use prometheus_client::metrics::MetricType;
+
+/// Hack to make `fmt::Write`rs passed to `prometheus_client` API aware of what is currently being encoded
+/// (e.g., the label value). For label values, we should escape the output string because `prometheus_client` doesn't do it
+/// on its own (which is a known issue: https://github.com/prometheus/client_rust/issues/151).
+#[derive(Debug, Clone, Copy)]
+#[doc(hidden)] // not public API
+#[non_exhaustive]
+pub enum EncodingContext {
+    LabelValue,
+}
+
+thread_local! {
+    static ENCODING_CONTEXT: Cell<Option<EncodingContext>> = const { Cell::new(None) };
+}
+
+impl EncodingContext {
+    /// # Panics
+    ///
+    /// Panics if encoding contexts are embedded.
+    pub fn enter(self) -> EncodingContextGuard {
+        ENCODING_CONTEXT.with(|cell| {
+            assert!(cell.get().is_none(), "Cannot embed encoding contexts");
+            cell.set(Some(self));
+        });
+        EncodingContextGuard(PhantomData)
+    }
+}
+
+/// Guard removing the currently active [`EncodingContext`] on drop.
+#[derive(Debug)]
+pub struct EncodingContextGuard(PhantomData<*mut ()>);
+
+impl Drop for EncodingContextGuard {
+    fn drop(&mut self) {
+        ENCODING_CONTEXT.set(None);
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct EscapeWrapper<W> {
+    inner: W,
+}
+
+impl<W: fmt::Write> EscapeWrapper<W> {
+    pub(crate) fn new(inner: W) -> Self {
+        Self { inner }
+    }
+}
+
+impl<W: fmt::Write> fmt::Write for EscapeWrapper<W> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let should_escape = matches!(ENCODING_CONTEXT.get(), Some(EncodingContext::LabelValue));
+        if should_escape {
+            for ch in s.chars() {
+                match ch {
+                    '\n' => self.inner.write_str("\\n")?,
+                    '"' => self.inner.write_str("\\\"")?,
+                    '\\' => self.inner.write_str("\\\\")?,
+                    other => self.inner.write_char(other)?,
+                }
+            }
+            Ok(())
+        } else {
+            self.inner.write_str(s)
+        }
+    }
+}
 
 /// Metrics export format.
 ///
@@ -77,16 +144,16 @@ impl MetricTypeDefinition {
 
 #[must_use = "Must be `flush()`ed to not lose the last line"]
 #[derive(Debug)]
-pub(crate) struct PrometheusWrapper<'a, W> {
-    writer: &'a mut W,
+pub(crate) struct PrometheusWrapper<W> {
+    writer: W,
     remove_eof_terminator: bool,
     translate_info_metrics_type: bool,
     last_metric_definition: Option<MetricTypeDefinition>,
     last_line: String,
 }
 
-impl<'a, W: fmt::Write> PrometheusWrapper<'a, W> {
-    pub(crate) fn new(writer: &'a mut W) -> Self {
+impl<W: fmt::Write> PrometheusWrapper<W> {
+    pub(crate) fn new(writer: W) -> Self {
         Self {
             writer,
             remove_eof_terminator: false,
@@ -161,7 +228,7 @@ impl<'a, W: fmt::Write> PrometheusWrapper<'a, W> {
     }
 }
 
-impl<W: fmt::Write> fmt::Write for PrometheusWrapper<'_, W> {
+impl<W: fmt::Write> fmt::Write for PrometheusWrapper<W> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let lines: Vec<_> = s.lines().collect();
         for (i, line) in lines.iter().enumerate() {
