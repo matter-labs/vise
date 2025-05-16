@@ -27,7 +27,7 @@ jobs:
         with:
           toolchain: ${{ env.msrv }}
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Build libraries
         run: cargo build --workspace --exclude vise-e2e-tests --lib --all-features
@@ -45,7 +45,7 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy, rust-src
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Format
         run: cargo fmt --all -- --config imports_granularity=Crate --config group_imports=StdExternalCrate --check
@@ -76,7 +76,7 @@ jobs:
         with:
           toolchain: ${{ env.nightly }}
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Build docs
         run: |
