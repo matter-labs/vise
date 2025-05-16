@@ -551,8 +551,14 @@ fn labeled_family_with_multiple_labels() {
     }
 }
 
-#[test]
-fn escaping_label_values() {
+fn test_escaping_label_values(format: Format) {
+    #[derive(Debug, EncodeLabelSet)]
+    #[metrics(crate = crate)]
+    struct PackageMetadata {
+        version: &'static str,
+        description: &'static str,
+    }
+
     #[derive(Debug, EncodeLabelSet)]
     #[metrics(crate = crate)]
     struct ValueLabels {
@@ -562,39 +568,70 @@ fn escaping_label_values() {
     #[derive(Debug, Metrics)]
     #[metrics(crate = crate, prefix = "escaped")]
     struct EscapedMetrics {
+        package_metadata: Info<PackageMetadata>,
         #[metrics(labels = ["name"])]
         values: LabeledFamily<&'static str, Info<ValueLabels>>,
     }
 
     let metrics = EscapedMetrics::default();
+    metrics
+        .package_metadata
+        .set(PackageMetadata {
+            version: "0.1.0",
+            description: "Multi-line text\nWith \"quotes\" and \"\\\" slashes\n",
+        })
+        .unwrap();
     metrics.values[&"test.value"]
         .set(ValueLabels {
             value: "\"100ms\"".to_owned(),
         })
-        .ok();
+        .unwrap();
     metrics.values[&"test.object"]
         .set(ValueLabels {
             value: "{\n  \"ms\": 100\n}".to_owned(),
         })
-        .ok();
+        .unwrap();
     metrics.values[&"test.backslash"]
         .set(ValueLabels {
             value: "\\ \\ \\".to_owned(),
         })
-        .ok();
+        .unwrap();
 
     let mut registry = Registry::empty();
     registry.register_metrics(&metrics);
     let mut buffer = String::new();
-    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
-    let lines: Vec<_> = buffer.lines().collect();
+    registry.encode(&mut buffer, format).unwrap();
 
-    let expected_lines = [
-        r#"escaped_values_info{value="{\n  \"ms\": 100\n}",name="test.object"} 1"#,
-        r#"escaped_values_info{value="\"100ms\"",name="test.value"} 1"#,
-        r#"escaped_values_info{value="\\ \\ \\",name="test.backslash"} 1"#,
-    ];
+    let lines: Vec<_> = buffer.lines().collect();
+    let expected_lines = if matches!(format, Format::OpenMetrics) {
+        [
+            r#"escaped_package_metadata_info{version="0.1.0",description="Multi-line text\nWith \"quotes\" and \"\\\" slashes\n"} 1"#,
+            r#"escaped_values_info{value="{\n  \"ms\": 100\n}",name="test.object"} 1"#,
+            r#"escaped_values_info{value="\"100ms\"",name="test.value"} 1"#,
+            r#"escaped_values_info{value="\\ \\ \\",name="test.backslash"} 1"#,
+        ]
+    } else {
+        [
+            r#"escaped_package_metadata{version="0.1.0",description="Multi-line text\nWith \"quotes\" and \"\\\" slashes\n"} 1"#,
+            r#"escaped_values{value="{\n  \"ms\": 100\n}",name="test.object"} 1"#,
+            r#"escaped_values{value="\"100ms\"",name="test.value"} 1"#,
+            r#"escaped_values{value="\\ \\ \\",name="test.backslash"} 1"#,
+        ]
+    };
+
     for line in expected_lines {
         assert!(lines.contains(&line), "{lines:#?}");
+    }
+}
+
+#[test]
+fn escaping_label_values() {
+    for format in [
+        Format::OpenMetrics,
+        Format::Prometheus,
+        Format::OpenMetricsForPrometheus,
+    ] {
+        println!("format = {format:?}");
+        test_escaping_label_values(format);
     }
 }

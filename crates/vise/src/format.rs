@@ -41,6 +41,8 @@ impl Drop for EncodingContextGuard {
     }
 }
 
+/// **Important:** must be the outermost wrapper (e.g., compared to [`PrometheusWrapper`]) so that buffering logic
+/// in other wrappers doesn't mess with encoding context.
 #[derive(Debug)]
 pub(crate) struct EscapeWrapper<W> {
     inner: W,

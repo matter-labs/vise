@@ -268,7 +268,6 @@ impl Registry {
     ///
     /// Proxies formatting errors of the provided `writer`.
     pub fn encode<W: fmt::Write>(&self, writer: &mut W, format: Format) -> fmt::Result {
-        let mut writer = EscapeWrapper::new(writer);
         match format {
             Format::Prometheus | Format::OpenMetricsForPrometheus => {
                 let mut wrapper = PrometheusWrapper::new(writer);
@@ -276,10 +275,10 @@ impl Registry {
                     wrapper.remove_eof_terminator();
                     wrapper.translate_info_metrics_type();
                 }
-                text::encode(&mut wrapper, &self.inner)?;
+                text::encode(&mut EscapeWrapper::new(&mut wrapper), &self.inner)?;
                 wrapper.flush()
             }
-            Format::OpenMetrics => text::encode(&mut writer, &self.inner),
+            Format::OpenMetrics => text::encode(&mut EscapeWrapper::new(writer), &self.inner),
         }
     }
 }
