@@ -20,6 +20,7 @@ enum Method {
 #[derive(Debug, EncodeLabelSet)]
 struct PackageMetadata {
     version: &'static str,
+    description: &'static str,
 }
 
 #[derive(Debug, Metrics)]
@@ -103,7 +104,10 @@ static GROUPED_METRICS: vise::MetricsFamily<Method, MethodMetrics> = vise::Metri
 async fn main() {
     METRICS
         .package_metadata
-        .set(PackageMetadata { version: "0.1.0" })
+        .set(PackageMetadata {
+            version: "0.1.0",
+            description: "Multi-line text\nWith \"quotes\" and \"\\\" slashes\n",
+        })
         .unwrap();
 
     const METRICS_INTERVAL: Duration = Duration::from_secs(5);
