@@ -305,6 +305,10 @@ async fn assert_metrics(client: &Client, prom_format: bool) -> anyhow::Result<()
         .context("Info data is not a vector")?;
     let info_labels = info_vec[0].metric();
     assert_eq!(info_labels["version"], "0.1.0", "{info_labels:?}");
+    assert_eq!(
+        info_labels["description"], "Multi-line text\nWith \"quotes\" and \"\\\" slashes\n",
+        "{info_labels:?}"
+    );
 
     let gauge_result = client.query("test_gauge_bytes").get().await?;
     tracing::info!(?gauge_result, "Got result for query: test_gauge_bytes");

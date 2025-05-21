@@ -11,4 +11,3 @@ error[E0277]: `Label` doesn't implement `std::fmt::Display`
   |
   = help: the trait `std::fmt::Display` is not implemented for `Label`
   = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
-  = note: this error originates in the macro `$crate::format_args` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -12,7 +12,7 @@ use crate::{
     collector::{Collector, LazyGlobalCollector},
     descriptors::{FullMetricDescriptor, MetricGroupDescriptor},
     encoding::GroupedMetric,
-    format::{Format, PrometheusWrapper},
+    format::{EscapeWrapper, Format, PrometheusWrapper},
     Metrics,
 };
 
@@ -275,10 +275,10 @@ impl Registry {
                     wrapper.remove_eof_terminator();
                     wrapper.translate_info_metrics_type();
                 }
-                text::encode(&mut wrapper, &self.inner)?;
+                text::encode(&mut EscapeWrapper::new(&mut wrapper), &self.inner)?;
                 wrapper.flush()
             }
-            Format::OpenMetrics => text::encode(writer, &self.inner),
+            Format::OpenMetrics => text::encode(&mut EscapeWrapper::new(writer), &self.inner),
         }
     }
 }

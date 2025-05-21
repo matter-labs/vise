@@ -406,6 +406,10 @@ pub mod _reexports {
     pub use ctor::ctor;
     pub use prometheus_client::{encoding, metrics::TypedMetric};
 }
+#[doc(hidden)] // only used by the proc macros
+pub mod _private {
+    pub use crate::format::EncodingContext;
+}
 
 mod buckets;
 mod builder;
