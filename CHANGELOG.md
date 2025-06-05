@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.1](https://github.com/matter-labs/vise/compare/v0.3.0...v0.3.1) (2025-05-21)
+
+
+### Bug Fixes
+
+* Escape label values ([#37](https://github.com/matter-labs/vise/issues/37)) ([8c64392](https://github.com/matter-labs/vise/commit/8c64392753ab8fe563c6fa3db5e4d987952ad011))
+
 ## [0.3.0](https://github.com/matter-labs/vise/compare/v0.2.0...v0.3.0) (2025-04-11)
 
 

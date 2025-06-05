@@ -17,7 +17,7 @@ Add this to your Crate.toml:
 
 ```toml
 [dependencies]
-vise-exporter = "0.3.0"
+vise-exporter = "0.3.1"
 ```
 
 An exporter can be initialized from a metrics `Registry`:
@@ -53,6 +53,5 @@ Distributed under the terms of either
 at your option.
 
 [prometheus]: https://prometheus.io/docs/introduction/overview/
-<!-- FIXME: replace with `crates.io` link -->
-[`vise`]: ../vise
+[`vise`]: https://crates.io/crates/vise
 [`hyper`]: https://crates.io/crates/hyper
