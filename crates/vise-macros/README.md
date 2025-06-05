@@ -19,5 +19,4 @@ Distributed under the terms of either
 
 at your option.
 
-<!-- FIXME: replace with `crates.io` link -->
-[`vise`]: ../vise
+[`vise`]: https://crates.io/crates/vise

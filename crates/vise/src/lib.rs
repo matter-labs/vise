@@ -115,7 +115,7 @@
 //! ```
 
 // Documentation settings.
-#![doc(html_root_url = "https://docs.rs/vise/0.3.0")]
+#![doc(html_root_url = "https://docs.rs/vise/0.3.1")]
 // Linter settings.
 #![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
 #![warn(clippy::all, clippy::pedantic)]
