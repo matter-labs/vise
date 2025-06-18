@@ -635,3 +635,33 @@ fn escaping_label_values() {
         test_escaping_label_values(format);
     }
 }
+
+#[test]
+fn owned_string_labeled_family() {
+    #[derive(Debug, Metrics)]
+    #[metrics(crate = crate, prefix = "test")]
+    struct TestMetrics {
+        #[metrics(buckets = Buckets::LATENCIES, labels = ["method"])]
+        latencies: LabeledFamily<String, Histogram<Duration>>,
+    }
+
+    let metrics = TestMetrics::default();
+    metrics.latencies["call"].observe(Duration::from_secs(1));
+    metrics.latencies[&String::from("call")].observe(Duration::from_secs(2));
+    metrics.latencies["send"].observe(Duration::from_secs(3));
+
+    let mut registry = Registry::empty();
+    registry.register_metrics(&metrics);
+    let mut buffer = String::new();
+    registry.encode(&mut buffer, Format::OpenMetrics).unwrap();
+    let lines: Vec<_> = buffer.lines().collect();
+    let expected_lines = [
+        "test_latencies_sum{method=\"send\"} 3.0",
+        "test_latencies_count{method=\"send\"} 1",
+        "test_latencies_sum{method=\"call\"} 3.0",
+        "test_latencies_count{method=\"call\"} 2",
+    ];
+    for line in expected_lines {
+        assert!(lines.contains(&line), "{lines:#?}");
+    }
+}

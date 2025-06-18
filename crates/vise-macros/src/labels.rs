@@ -257,8 +257,8 @@ impl EncodeLabelValueImpl {
         let encode_impl = if let Some(enum_variants) = &self.enum_variants {
             let variant_hands = enum_variants.iter().map(EnumVariant::encode);
             quote! {
-                use core::fmt::Write as _;
-                core::write!(encoder, "{}", match self {
+                use ::core::fmt::Write as _;
+                ::core::write!(encoder, "{}", match self {
                     #(#variant_hands,)*
                 })
             }
@@ -272,8 +272,8 @@ impl EncodeLabelValueImpl {
             };
 
             quote_spanned! {format.span()=>
-                use core::fmt::Write as _;
-                core::write!(encoder, #format, self)
+                use ::core::fmt::Write as _;
+                ::core::write!(encoder, #format, self)
             }
         };
 
@@ -390,7 +390,7 @@ impl LabelField {
         // Skip `Option`al fields by default if they are `None`.
         let default_skip: Path;
         let skip = if self.is_option && self.attrs.skip.is_none() {
-            default_skip = syn::parse_quote_spanned!(span=> core::option::Option::is_none);
+            default_skip = syn::parse_quote_spanned!(span=> ::core::option::Option::is_none);
             Some(&default_skip)
         } else {
             self.attrs.skip.as_ref()
@@ -494,7 +494,7 @@ impl EncodeLabelSetImpl {
             });
             quote! {
                 #(#fields)*
-                core::fmt::Result::Ok(())
+                ::core::fmt::Result::Ok(())
             }
         };
 
@@ -506,7 +506,7 @@ impl EncodeLabelSetImpl {
                 fn encode(
                     &self,
                     encoder: &mut #encoding::LabelSetEncoder<'_>,
-                ) -> core::fmt::Result {
+                ) -> ::core::fmt::Result {
                     #encode_impl
                 }
             }

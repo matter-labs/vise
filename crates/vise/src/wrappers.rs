@@ -1,6 +1,7 @@
 //! Wrappers for metric types defined in `prometheus-client`.
 
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     fmt,
     hash::Hash,
@@ -345,11 +346,7 @@ where
     }
 }
 
-impl<S, M> FamilyInner<S, M>
-where
-    S: Clone + Eq + Hash,
-    M: BuildMetric,
-{
+impl<S: Eq + Hash, M: BuildMetric> FamilyInner<S, M> {
     pub(crate) fn new(builder: M::Builder) -> Self {
         Self {
             map: FrozenMap::new(),
@@ -357,14 +354,24 @@ where
         }
     }
 
-    pub(crate) fn get_or_create(&self, labels: &S) -> &M {
+    pub(crate) fn get_or_create<Q>(&self, labels: &Q) -> &M
+    where
+        S: Borrow<Q>,
+        Q: Eq + Hash + ?Sized + ToOwned<Owned = S>,
+    {
         if let Some(metric) = self.map.get(labels) {
             return metric;
         }
         self.map
-            .insert_with(labels.clone(), || Box::new(M::build(self.builder)))
+            .insert_with(labels.to_owned(), || Box::new(M::build(self.builder)))
     }
+}
 
+impl<S, M> FamilyInner<S, M>
+where
+    S: Clone + Eq + Hash,
+    M: BuildMetric,
+{
     pub(crate) fn to_entries(&self) -> impl ExactSizeIterator<Item = (S, &M)> + '_ {
         let labels = self.map.keys_cloned();
         labels.into_iter().map(|key| {
@@ -516,14 +523,15 @@ where
 }
 
 /// Will create a new metric with the specified labels if it's missing in the family.
-impl<S, M, L> ops::Index<&S> for Family<S, M, L>
+impl<S, M, L, Q> ops::Index<&Q> for Family<S, M, L>
 where
-    S: Clone + Eq + Hash,
+    S: Borrow<Q> + Eq + Hash,
+    Q: Eq + Hash + ToOwned<Owned = S> + ?Sized,
     M: BuildMetric,
 {
     type Output = M;
 
-    fn index(&self, labels: &S) -> &Self::Output {
+    fn index(&self, labels: &Q) -> &Self::Output {
         self.inner.get_or_create(labels)
     }
 }

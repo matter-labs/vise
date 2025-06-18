@@ -190,9 +190,9 @@ impl MetricsField {
         let docs = &self.docs;
 
         let unit = if let Some(unit) = &self.attrs.unit {
-            quote!(core::option::Option::Some(#unit))
+            quote!(::core::option::Option::Some(#unit))
         } else {
-            quote!(core::option::Option::None)
+            quote!(::core::option::Option::None)
         };
 
         quote! {
@@ -219,15 +219,15 @@ impl MetricsField {
         let docs = &self.docs;
         let ty = &self.ty;
         let unit = if let Some(unit) = &self.attrs.unit {
-            quote!(core::option::Option::Some(#unit))
+            quote!(::core::option::Option::Some(#unit))
         } else {
-            quote!(core::option::Option::None)
+            quote!(::core::option::Option::None)
         };
 
         quote! {
             #cr::descriptors::MetricDescriptor {
                 name: #name_str,
-                field_name: core::stringify!(#name),
+                field_name: ::core::stringify!(#name),
                 metric_type: <#ty as #cr::_reexports::TypedMetric>::TYPE,
                 help: #docs,
                 unit: #unit,
@@ -326,11 +326,11 @@ impl MetricsImpl {
 
         let descriptor = quote_spanned! {name.span()=>
             #cr::descriptors::MetricGroupDescriptor {
-                crate_name: core::env!("CARGO_CRATE_NAME"),
-                crate_version: core::env!("CARGO_PKG_VERSION"),
-                module_path: core::module_path!(),
-                name: core::stringify!(#name),
-                line: core::line!(),
+                crate_name: ::core::env!("CARGO_CRATE_NAME"),
+                crate_version: ::core::env!("CARGO_PKG_VERSION"),
+                module_path: ::core::module_path!(),
+                name: ::core::stringify!(#name),
+                line: ::core::line!(),
                 metrics: &[#(#describe_fields,)*],
             }
         };
@@ -351,7 +351,7 @@ impl MetricsImpl {
         let validation = self.validate();
         let initialization = self.initialize();
         let default_impl = quote! {
-            impl core::default::Default for #name {
+            impl ::core::default::Default for #name {
                 fn default() -> Self {
                     #initialization
                 }
