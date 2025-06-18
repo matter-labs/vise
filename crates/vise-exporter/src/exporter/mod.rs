@@ -37,35 +37,29 @@ struct MetricsExporterInner {
 
 impl MetricsExporterInner {
     async fn render_body(&self) -> String {
-        let mut buffer = String::new();
-
         let latency = EXPORTER_METRICS.scrape_latency[&Facade::Vise].start();
         let registry = Arc::clone(&self.registry);
         let format = self.format;
         // `Registry::encode()` is blocking in the general case (specifically, if collectors are used; they may use
         // blocking I/O etc.). We cannot make metric collection non-blocking because the underlying library only provides
         // blocking interface for collectors.
-        let new_buffer = tokio::task::spawn_blocking(move || {
-            let mut new_buffer = String::with_capacity(1_024);
-            registry.encode(&mut new_buffer, format).unwrap();
+        let buffer = tokio::task::spawn_blocking(move || {
+            let mut buffer = String::with_capacity(1_024);
+            registry.encode(&mut buffer, format).unwrap();
             // ^ `unwrap()` is safe; writing to a string never fails.
-            new_buffer
+            buffer
         })
         .await
         .unwrap(); // propagate panics should they occur in the spawned blocking task
 
         let latency = latency.observe();
-        let scraped_size = new_buffer.len();
+        let scraped_size = buffer.len();
         EXPORTER_METRICS.scraped_size[&Facade::Vise].observe(scraped_size);
         tracing::debug!(
             latency_sec = latency.as_secs_f64(),
             scraped_size,
             "Scraped metrics using `vise` façade in {latency:?} (scraped size: {scraped_size}B)"
         );
-
-        // Concatenate buffers. Since `legacy_buffer` ends with a newline (if it isn't empty),
-        // we don't need to add a newline.
-        buffer.push_str(&new_buffer);
         buffer
     }
 
