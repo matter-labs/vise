@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.2](https://github.com/matter-labs/vise/compare/v0.3.1...v0.3.2) (2025-06-18)
+
+
+### Features
+
+* Allow `str` indexing for labeled families ([#39](https://github.com/matter-labs/vise/issues/39)) ([20fe082](https://github.com/matter-labs/vise/commit/20fe082d2cdf21963dd0a20213c77652251ecd2c))
+
 ## [0.3.1](https://github.com/matter-labs/vise/compare/v0.3.0...v0.3.1) (2025-05-21)
 
 

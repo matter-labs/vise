@@ -6,7 +6,7 @@
 //! [`vise`]: https://docs.rs/vise/
 
 // Documentation settings.
-#![doc(html_root_url = "https://docs.rs/vise-macros/0.3.1")]
+#![doc(html_root_url = "https://docs.rs/vise-macros/0.3.2")]
 // General settings.
 #![recursion_limit = "128"]
 // Linter settings.
