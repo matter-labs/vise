@@ -23,6 +23,15 @@ enum BucketsInner {
 }
 
 impl BucketsInner {
+    const fn smallest_value(&self) -> f64 {
+        match self {
+            Self::Slice(values) => values[0],
+            Self::Linear { start, .. }
+            | Self::Exponential { start, .. }
+            | Self::Scaled { start, .. } => *start,
+        }
+    }
+
     fn iter(self) -> Box<dyn Iterator<Item = f64>> {
         match self {
             Self::Slice(slice) => Box::new(slice.iter().copied()),
@@ -69,6 +78,7 @@ impl BucketsInner {
 pub struct Buckets {
     inner: BucketsInner,
     bias: f64,
+    mirrored: bool,
 }
 
 impl Buckets {
@@ -80,7 +90,11 @@ impl Buckets {
     pub const ZERO_TO_ONE: Self = Self::values(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]);
 
     const fn new(inner: BucketsInner) -> Self {
-        Self { inner, bias: 0.0 }
+        Self {
+            inner,
+            bias: 0.0,
+            mirrored: false,
+        }
     }
 
     /// Creates buckets based on the provided `values`.
@@ -205,17 +219,50 @@ impl Buckets {
         })
     }
 
+    /// Mirrors the buckets around zero, adding negative values that correspond to all positive
+    /// bucket thresholds.
+    ///
+    /// For example, if the buckets are `[1, 2, 5]`, then after mirroring, they will be
+    /// `[-5, -2, -1, 1, 2, 5]`.
+    ///
+    /// If [a bias](Self::biased()) is set up, it is applied after mirroring.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the smallest bucket value is negative.
+    #[must_use]
+    pub const fn mirrored(self) -> Self {
+        assert!(
+            is_f64_geq(self.inner.smallest_value(), 0.0),
+            "Smallest bucket value must be non-negative"
+        );
+        Self {
+            mirrored: true,
+            ..self
+        }
+    }
+
     /// Specifies bias for these buckets. This allows to more easily reuse buckets, or to specify
     /// exponential / scaled buckets with bias.
     ///
-    /// If called multiple times, the bias is *replaced*, not accumulated.
+    /// If called multiple times, the bias is *replaced*, not accumulated. Bias is applied
+    /// after [mirroring](Self::mirrored()).
     #[must_use]
     pub const fn biased(self, bias: f64) -> Self {
         Self { bias, ..self }
     }
 
     pub(crate) fn iter(self) -> impl Iterator<Item = f64> {
-        self.inner.iter().map(move |value| value + self.bias)
+        let mut base = self.inner.iter();
+        if self.mirrored {
+            let collected_base: Vec<_> = self.inner.iter().collect();
+            let mirrored = collected_base
+                .into_iter()
+                .rev()
+                .filter_map(|value| (value > 0.0).then_some(-value));
+            base = Box::new(mirrored.chain(base));
+        }
+        base.map(move |value| value + self.bias)
     }
 }
 
@@ -315,6 +362,13 @@ const fn is_f64_greater(lhs: f64, rhs: f64) -> bool {
     matches!(compare_f64(lhs, rhs), Some(cmp::Ordering::Greater))
 }
 
+const fn is_f64_geq(lhs: f64, rhs: f64) -> bool {
+    matches!(
+        compare_f64(lhs, rhs),
+        Some(cmp::Ordering::Greater | cmp::Ordering::Equal)
+    )
+}
+
 #[cfg(test)]
 #[allow(clippy::float_cmp)] // We *want* exact comparisons
 mod tests {
@@ -385,6 +439,28 @@ mod tests {
         let buckets = Buckets::scaled(1.0..=200.0, &[3.0, 10.0]).biased(-10.0);
         let buckets = buckets.iter().collect::<Vec<_>>();
         assert_eq!(buckets, [-9.0, -7.0, 0.0, 20.0, 90.0]);
+    }
+
+    #[test]
+    fn mirrored_buckets() {
+        let buckets = Buckets::values(&[0.0, 1.0, 2.0, 5.0]).mirrored();
+        let buckets = buckets.iter().collect::<Vec<_>>();
+        assert_eq!(buckets, [-5.0, -2.0, -1.0, 0.0, 1.0, 2.0, 5.0]);
+
+        let buckets = Buckets::exponential(1.0..=10.0, 2.0).mirrored();
+        let buckets = buckets.iter().collect::<Vec<_>>();
+        assert_eq!(buckets, [-8.0, -4.0, -2.0, -1.0, 1.0, 2.0, 4.0, 8.0]);
+
+        let buckets = Buckets::exponential(1.0..=10.0, 2.0).mirrored().biased(8.0);
+        let buckets = buckets.iter().collect::<Vec<_>>();
+        assert_eq!(buckets, [0.0, 4.0, 6.0, 7.0, 9.0, 10.0, 12.0, 16.0]);
+
+        let buckets = Buckets::scaled(1.0..=200.0, &[3.0, 10.0]).mirrored();
+        let buckets = buckets.iter().collect::<Vec<_>>();
+        assert_eq!(
+            buckets,
+            [-100.0, -30.0, -10.0, -3.0, -1.0, 1.0, 3.0, 10.0, 30.0, 100.0]
+        );
     }
 
     #[test]
