@@ -322,11 +322,11 @@ const fn compare_f64(lhs: f64, rhs: f64) -> Option<cmp::Ordering> {
     // and is the cause of `f64::{to_bits, from_bits}` being non-const is handling corner cases
     // (e.g., NaNs and subnormals) in a platform-independent way consistent with runtime behavior.
     // We check for these corner case numbers below and treat them as non-comparable.
-    #[expect(unnecessary_transmutes)]
+    #[allow(unknown_lints, unnecessary_transmutes)]
     // ^ false positive; `f64::to_bits` is stabilized as const fn in Rust 1.83 (i.e., > MSRV).
     let lhs_bits: u64 = unsafe { mem::transmute(lhs) };
     let lhs = DecomposedF64::new(lhs_bits);
-    #[expect(unnecessary_transmutes)]
+    #[allow(unknown_lints, unnecessary_transmutes)]
     let rhs_bits: u64 = unsafe { mem::transmute(rhs) };
     let rhs = DecomposedF64::new(rhs_bits);
 
