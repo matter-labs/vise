@@ -14,7 +14,7 @@ env:
   # Minimum supported Rust version.
   msrv: 1.79.0
   # Nightly Rust necessary for building docs.
-  nightly: nightly-2024-08-01
+  nightly: nightly-2025-05-23
 
 jobs:
   build-msrv:
@@ -61,11 +61,10 @@ jobs:
       - name: Run doc tests
         run: cargo test --workspace --all-features --doc
 
-  document:
+  build-nightly:
     needs:
       - build
       - build-msrv
-    if: github.event_name == 'push' && github.ref_type == 'branch'
     runs-on: ubuntu-latest
 
     steps:
@@ -78,15 +77,19 @@ jobs:
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.9
 
+      - name: Build libraries
+        run: cargo build --workspace --exclude vise-e2e-tests --lib --all-features
+
       - name: Build docs
         run: |
           cargo clean --doc && \
-          cargo rustdoc -p vise-macros --all-features && \
-          cargo rustdoc -p vise --all-features && \
-          cargo rustdoc -p vise-exporter --all-features -- --cfg docsrs
+          cargo rustdoc -p vise-macros --all-features -- -D warnings && \
+          cargo rustdoc -p vise --all-features -- -D warnings && \
+          cargo rustdoc -p vise-exporter --all-features -- -D warnings --cfg docsrs
 
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
+        if: github.event_name == 'push' && github.ref_type == 'branch'
         with:
           branch: gh-pages
           folder: target/doc
