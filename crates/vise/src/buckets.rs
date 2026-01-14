@@ -5,8 +5,21 @@ use compile_fmt::{compile_assert, fmt};
 #[derive(Debug, Clone, Copy)]
 enum BucketsInner {
     Slice(&'static [f64]),
-    Linear { start: f64, end: f64, step: f64 },
-    Exponential { start: f64, end: f64, factor: f64 },
+    Linear {
+        start: f64,
+        end: f64,
+        step: f64,
+    },
+    Exponential {
+        start: f64,
+        end: f64,
+        factor: f64,
+    },
+    Scaled {
+        start: f64,
+        end: f64,
+        factors: &'static [f64],
+    },
 }
 
 impl BucketsInner {
@@ -25,6 +38,26 @@ impl BucketsInner {
                     let value = value * factor;
                     (value <= end).then_some(value)
                 });
+                Box::new(it)
+            }
+            Self::Scaled {
+                start,
+                end,
+                factors,
+            } => {
+                let greatest_factor = *factors.last().unwrap();
+                let smaller_factors = &factors[..factors.len() - 1];
+
+                let starts =
+                    iter::successors(Some(start), move |&value| Some(value * greatest_factor));
+
+                let it = starts
+                    .flat_map(move |start| {
+                        iter::once(1.0)
+                            .chain(smaller_factors.iter().copied())
+                            .map(move |factor| start * factor)
+                    })
+                    .take_while(move |&value| value <= end);
                 Box::new(it)
             }
         }
@@ -108,6 +141,63 @@ impl Buckets {
         })
     }
 
+    /// Creates *roughly* exponential buckets that apply the given sequence of `factors` to the `range`.
+    /// `factors` must be monotonically increasing and exceed 1.
+    ///
+    /// The created buckets will consist of:
+    ///
+    /// - `range.start` multiplied by 1.0, `factors[0]`, `factors[1]`, ..., `factors[n - 2]`, where
+    ///   `n == factors.len()`.
+    /// - `range.start * factors[n - 1]` multiplied by 1.0, `factors[0]`, `factors[1]`, ..., `factors[n - 2]`
+    /// - ...and so on, until the produced value exceeds `range.end`.
+    ///
+    /// [Exponential buckets](Self::exponential()) are equivalent to specifying `factors` with a single item.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `range` is empty, `factors` are below 1 or not monotonically increasing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use vise::Buckets;
+    ///
+    /// const BUCKETS: Buckets = Buckets::scaled(1.0..=1_000.0, &[2.0, 5.0, 10.0]);
+    /// // `BUCKETS` consist of [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].
+    /// ```
+    pub const fn scaled(range: ops::RangeInclusive<f64>, factors: &'static [f64]) -> Self {
+        assert!(
+            is_f64_greater(*range.start(), 0.0),
+            "Range start must be positive"
+        );
+        assert!(
+            is_f64_greater(*range.end(), *range.start()),
+            "Specified exponential range is empty"
+        );
+
+        assert!(!factors.is_empty(), "At least one factor must be specified");
+        assert!(
+            is_f64_greater(factors[0], 1.0),
+            "Factors must be greater than 1"
+        );
+
+        let mut i = 0;
+        while i + 1 < factors.len() {
+            compile_assert!(
+                is_f64_greater(factors[i + 1], factors[i]),
+                "Factors must be monotonically increasing; offending value has index ",
+                i => fmt::<usize>()
+            );
+            i += 1;
+        }
+
+        Self(BucketsInner::Scaled {
+            start: *range.start(),
+            end: *range.end(),
+            factors,
+        })
+    }
+
     pub(crate) fn iter(self) -> impl Iterator<Item = f64> {
         self.0.iter()
     }
@@ -169,8 +259,11 @@ const fn compare_f64(lhs: f64, rhs: f64) -> Option<cmp::Ordering> {
     // and is the cause of `f64::{to_bits, from_bits}` being non-const is handling corner cases
     // (e.g., NaNs and subnormals) in a platform-independent way consistent with runtime behavior.
     // We check for these corner case numbers below and treat them as non-comparable.
+    #[expect(unnecessary_transmutes)]
+    // ^ false positive; `f64::to_bits` is stabilized as const fn in Rust 1.83 (i.e., > MSRV).
     let lhs_bits: u64 = unsafe { mem::transmute(lhs) };
     let lhs = DecomposedF64::new(lhs_bits);
+    #[expect(unnecessary_transmutes)]
     let rhs_bits: u64 = unsafe { mem::transmute(rhs) };
     let rhs = DecomposedF64::new(rhs_bits);
 
@@ -228,6 +321,43 @@ mod tests {
         let buckets = Buckets::exponential(1.0..=10.0, 2.0);
         let buckets = buckets.0.iter().collect::<Vec<_>>();
         assert_eq!(buckets, [1.0, 2.0, 4.0, 8.0]);
+    }
+
+    #[test]
+    fn scaled_buckets() {
+        let buckets = Buckets::scaled(1.0..=100.0, &[2.0, 5.0, 10.0]);
+        let buckets = buckets.0.iter().collect::<Vec<_>>();
+        assert_eq!(buckets, [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]);
+
+        let buckets = Buckets::scaled(1.0..=200.0, &[3.0, 10.0]);
+        let buckets = buckets.0.iter().collect::<Vec<_>>();
+        assert_eq!(buckets, [1.0, 3.0, 10.0, 30.0, 100.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Range start must be positive")]
+    fn incorrect_start_for_scaled_buckets() {
+        Buckets::scaled(-1.0..=100.0, &[2.0, 5.0, 10.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "exponential range is empty")]
+    fn incorrect_end_for_scaled_buckets() {
+        Buckets::scaled(1.0..=0.1, &[2.0, 5.0, 10.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Factors must be greater than 1")]
+    fn incorrect_start_factor_for_scaled_buckets() {
+        Buckets::scaled(1.0..=100.0, &[1.0, 5.0, 10.0]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Factors must be monotonically increasing; offending value has index 0"
+    )]
+    fn incorrect_factors_sequence_for_scaled_buckets() {
+        Buckets::scaled(1.0..=100.0, &[5.0, 2.0, 10.0]);
     }
 
     #[test]
