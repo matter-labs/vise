@@ -1,5 +1,5 @@
-error[E0080]: evaluation of constant value failed
+error[E0080]: evaluation panicked: Label name `код` is invalid: name contains non-ASCII chars, first at position 0
  --> tests/ui/labels/bogus_label_name_in_field.rs:6:5
   |
 6 |     код: u16,
-  |     ^^^ evaluation panicked: Label name `код` is invalid: name contains non-ASCII chars, first at position 0
+  |     ^^^ evaluation of `_` failed here
