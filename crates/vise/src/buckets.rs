@@ -66,7 +66,10 @@ impl BucketsInner {
 
 /// Buckets configuration for a [`Histogram`](crate::Histogram) or a [`Family`](crate::Family) of histograms.
 #[derive(Debug, Clone, Copy)]
-pub struct Buckets(BucketsInner);
+pub struct Buckets {
+    inner: BucketsInner,
+    bias: f64,
+}
 
 impl Buckets {
     /// Default buckets configuration for latencies.
@@ -75,6 +78,10 @@ impl Buckets {
 
     /// Linear buckets covering `[0.0, 1.0]` interval.
     pub const ZERO_TO_ONE: Self = Self::values(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]);
+
+    const fn new(inner: BucketsInner) -> Self {
+        Self { inner, bias: 0.0 }
+    }
 
     /// Creates buckets based on the provided `values`.
     ///
@@ -96,7 +103,7 @@ impl Buckets {
             prev_value = values[i];
             i += 1;
         }
-        Self(BucketsInner::Slice(values))
+        Self::new(BucketsInner::Slice(values))
     }
 
     /// Creates linear buckets based on the specified `range` and `step`. The created buckets will
@@ -111,7 +118,7 @@ impl Buckets {
             "Specified linear range is empty"
         );
         assert!(is_f64_greater(step, 0.0), "Step must be positive");
-        Self(BucketsInner::Linear {
+        Self::new(BucketsInner::Linear {
             start: *range.start(),
             end: *range.end(),
             step,
@@ -134,7 +141,7 @@ impl Buckets {
             "Specified exponential range is empty"
         );
         assert!(is_f64_greater(factor, 1.0), "Factor must be greater than 1");
-        Self(BucketsInner::Exponential {
+        Self::new(BucketsInner::Exponential {
             start: *range.start(),
             end: *range.end(),
             factor,
@@ -191,15 +198,24 @@ impl Buckets {
             i += 1;
         }
 
-        Self(BucketsInner::Scaled {
+        Self::new(BucketsInner::Scaled {
             start: *range.start(),
             end: *range.end(),
             factors,
         })
     }
 
+    /// Specifies bias for these buckets. This allows to more easily reuse buckets, or to specify
+    /// exponential / scaled buckets with bias.
+    ///
+    /// If called multiple times, the bias is *replaced*, not accumulated.
+    #[must_use]
+    pub const fn biased(self, bias: f64) -> Self {
+        Self { bias, ..self }
+    }
+
     pub(crate) fn iter(self) -> impl Iterator<Item = f64> {
-        self.0.iter()
+        self.inner.iter().map(move |value| value + self.bias)
     }
 }
 
@@ -309,7 +325,7 @@ mod tests {
     #[test]
     fn linear_buckets() {
         let buckets = Buckets::linear(0.0..=10.0, 1.0);
-        let buckets = buckets.0.iter().collect::<Vec<_>>();
+        let buckets = buckets.iter().collect::<Vec<_>>();
         assert_eq!(
             buckets,
             [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
@@ -319,18 +335,18 @@ mod tests {
     #[test]
     fn exponential_buckets() {
         let buckets = Buckets::exponential(1.0..=10.0, 2.0);
-        let buckets = buckets.0.iter().collect::<Vec<_>>();
+        let buckets = buckets.iter().collect::<Vec<_>>();
         assert_eq!(buckets, [1.0, 2.0, 4.0, 8.0]);
     }
 
     #[test]
     fn scaled_buckets() {
         let buckets = Buckets::scaled(1.0..=100.0, &[2.0, 5.0, 10.0]);
-        let buckets = buckets.0.iter().collect::<Vec<_>>();
+        let buckets = buckets.iter().collect::<Vec<_>>();
         assert_eq!(buckets, [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]);
 
         let buckets = Buckets::scaled(1.0..=200.0, &[3.0, 10.0]);
-        let buckets = buckets.0.iter().collect::<Vec<_>>();
+        let buckets = buckets.iter().collect::<Vec<_>>();
         assert_eq!(buckets, [1.0, 3.0, 10.0, 30.0, 100.0]);
     }
 
@@ -358,6 +374,17 @@ mod tests {
     )]
     fn incorrect_factors_sequence_for_scaled_buckets() {
         Buckets::scaled(1.0..=100.0, &[5.0, 2.0, 10.0]);
+    }
+
+    #[test]
+    fn biased_exponential_buckets() {
+        let buckets = Buckets::exponential(1.0..=10.0, 2.0).biased(10.0);
+        let buckets = buckets.iter().collect::<Vec<_>>();
+        assert_eq!(buckets, [11.0, 12.0, 14.0, 18.0]);
+
+        let buckets = Buckets::scaled(1.0..=200.0, &[3.0, 10.0]).biased(-10.0);
+        let buckets = buckets.iter().collect::<Vec<_>>();
+        assert_eq!(buckets, [-9.0, -7.0, 0.0, 20.0, 90.0]);
     }
 
     #[test]
