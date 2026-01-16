@@ -81,8 +81,8 @@ impl MetricsExporterInner {
 ///
 /// An exporter scrapes metrics from a [`Registry`]. A [`Default`] exporter will use the registry
 /// of all metrics auto-registered in an app and all its (transitive) dependencies, i.e. one
-/// created using [`Registry::collect()`]. To have more granular control over the registry, you can
-/// provide it explicitly using [`Self::new()`].
+/// created using [`MetricsCollection::default()`] [`.collect()`](MetricsCollection::collect()).
+/// To have more granular control over the registry, you can provide it explicitly using [`Self::new()`].
 ///
 /// # Examples
 ///

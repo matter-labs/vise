@@ -25,7 +25,6 @@ on:
 
 
 jobs:
-
   publish-crates:
     name: Publish to crates.io
     runs-on: matterlabs-ci-runner-highdisk
