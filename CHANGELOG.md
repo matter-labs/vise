@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.3](https://github.com/matter-labs/vise/compare/v0.3.2...v0.3.3) (2026-01-16)
+
+
+### Features
+
+* More bucket functionality ([#42](https://github.com/matter-labs/vise/issues/42)) ([02eb01d](https://github.com/matter-labs/vise/commit/02eb01d10349a82aad09ff4e113ac3bb75e836db))
+
 ## [0.3.2](https://github.com/matter-labs/vise/compare/v0.3.1...v0.3.2) (2025-06-18)
 
 
