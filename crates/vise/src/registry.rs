@@ -1,6 +1,6 @@
 //! Wrapper around metrics registry.
 
-use std::{collections::HashMap, fmt, sync::Mutex};
+use std::{borrow::Cow, collections::HashMap, fmt, sync::Mutex};
 
 use once_cell::sync::Lazy;
 use prometheus_client::{
@@ -231,6 +231,38 @@ impl Registry {
         }
     }
 
+    /// Creates a new [`Registry`] with the given labels.
+    pub fn with_labels(
+        labels: impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)>,
+    ) -> Self {
+        Self {
+            descriptors: RegisteredDescriptors::default(),
+            inner: RegistryInner::with_labels(labels),
+            is_lazy: false,
+        }
+    }
+
+    /// Creates a new [`Registry`] with the given prefix and labels.
+    pub fn with_prefix_and_labels(
+        prefix: impl Into<String>,
+        labels: impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)>,
+    ) -> Self {
+        Self {
+            descriptors: RegisteredDescriptors::default(),
+            inner: RegistryInner::with_prefix_and_labels(prefix, labels),
+            is_lazy: false,
+        }
+    }
+
+    /// Creates a new [`Registry`] with the given prefix.
+    pub fn with_prefix(prefix: impl Into<String>) -> Self {
+        Self {
+            descriptors: RegisteredDescriptors::default(),
+            inner: RegistryInner::with_prefix(prefix),
+            is_lazy: false,
+        }
+    }
+
     /// Returns descriptors for all registered metrics.
     pub fn descriptors(&self) -> &RegisteredDescriptors {
         &self.descriptors
@@ -394,7 +426,7 @@ impl MetricsRegistrations {
         self.inner.lock().unwrap().push(metrics);
     }
 
-    fn get(&self) -> Vec<&'static dyn CollectToRegistry> {
+    pub fn get(&self) -> Vec<&'static dyn CollectToRegistry> {
         self.inner.lock().unwrap().clone()
     }
 }
