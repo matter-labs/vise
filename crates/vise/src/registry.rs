@@ -81,6 +81,8 @@ impl RegisteredDescriptors {
 pub struct MetricsCollection<F = fn(&MetricGroupDescriptor) -> bool> {
     is_lazy: bool,
     filter_fn: F,
+    prefix: Option<String>,
+    labels: Vec<(Cow<'static, str>, Cow<'static, str>)>,
 }
 
 impl Default for MetricsCollection {
@@ -88,6 +90,8 @@ impl Default for MetricsCollection {
         Self {
             is_lazy: false,
             filter_fn: |_| true,
+            prefix: None,
+            labels: Vec::new(),
         }
     }
 }
@@ -115,6 +119,7 @@ impl MetricsCollection {
 
     /// Configures a filtering predicate for this collection. Only [`Metrics`] with a descriptor
     /// satisfying this will be [collected](MetricsCollection::collect()).
+    #[must_use]
     pub fn filter<F>(self, filter_fn: F) -> MetricsCollection<F>
     where
         F: FnMut(&MetricGroupDescriptor) -> bool,
@@ -122,6 +127,36 @@ impl MetricsCollection {
         MetricsCollection {
             is_lazy: self.is_lazy,
             filter_fn,
+            prefix: self.prefix,
+            labels: self.labels,
+        }
+    }
+
+    /// Configures a prefix for this collection. The prefix will be added to the beginning of all metric names.
+    #[must_use]
+    pub fn with_prefix(self, prefix: impl Into<String>) -> Self {
+        Self {
+            prefix: Some(prefix.into()),
+            ..self
+        }
+    }
+
+    /// Configures labels for this collection. The labels will be added to all metrics in the collection.
+    ///
+    /// Note that labels are replaced, not merged.
+    #[must_use]
+    pub fn with_labels<I, K, V>(self, labels: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<Cow<'static, str>>,
+        V: Into<Cow<'static, str>>,
+    {
+        Self {
+            labels: labels
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+            ..self
         }
     }
 }
@@ -134,6 +169,13 @@ impl<F: FnMut(&MetricGroupDescriptor) -> bool> MetricsCollection<F> {
     pub fn collect(mut self) -> Registry {
         let mut registry = Registry::empty();
         registry.is_lazy = self.is_lazy;
+
+        if let Some(prefix) = self.prefix {
+            registry.inner = RegistryInner::with_prefix_and_labels(prefix, self.labels.into_iter());
+        } else if !self.labels.is_empty() {
+            registry.inner = RegistryInner::with_labels(self.labels.into_iter());
+        }
+
         for metric in METRICS_REGISTRATIONS.get() {
             if (self.filter_fn)(metric.descriptor()) {
                 metric.collect_to_registry(&mut registry);
@@ -227,38 +269,6 @@ impl Registry {
         Self {
             descriptors: RegisteredDescriptors::default(),
             inner: RegistryInner::default(),
-            is_lazy: false,
-        }
-    }
-
-    /// Creates a new [`Registry`] with the given labels.
-    pub fn with_labels(
-        labels: impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)>,
-    ) -> Self {
-        Self {
-            descriptors: RegisteredDescriptors::default(),
-            inner: RegistryInner::with_labels(labels),
-            is_lazy: false,
-        }
-    }
-
-    /// Creates a new [`Registry`] with the given prefix and labels.
-    pub fn with_prefix_and_labels(
-        prefix: impl Into<String>,
-        labels: impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)>,
-    ) -> Self {
-        Self {
-            descriptors: RegisteredDescriptors::default(),
-            inner: RegistryInner::with_prefix_and_labels(prefix, labels),
-            is_lazy: false,
-        }
-    }
-
-    /// Creates a new [`Registry`] with the given prefix.
-    pub fn with_prefix(prefix: impl Into<String>) -> Self {
-        Self {
-            descriptors: RegisteredDescriptors::default(),
-            inner: RegistryInner::with_prefix(prefix),
             is_lazy: false,
         }
     }
