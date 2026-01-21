@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="`Family` with separately specified label names."><title>LabeledFamily in vise - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-0ce1a80b.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="vise" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0-nightly (2eef47813 2025-05-22)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../static.files/storage-4e99c027.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc type"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../vise/index.html">vise</a><span class="version">0.3.2</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Labeled<wbr>Family</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#examples" title="Examples">Examples</a><ul><li><a href="#family-with-single-label" title="Family with single label">Family with single label</a></li><li><a href="#family-with-multiple-labels" title="Family with multiple labels">Family with multiple labels</a></li></ul></li></ul><h3><a href="#aliased-type">Aliased Type</a></h3></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="index.html">In crate vise</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="index.html">vise</a></div><h1>Type Alias <span class="type">LabeledFamily</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/vise/wrappers.rs.html#467">Source</a> </span></div><pre class="rust item-decl"><code>pub type LabeledFamily&lt;S, M, const N: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a> = 1&gt; = <a class="struct" href="struct.Family.html" title="struct vise::Family">Family</a>&lt;S, M, [&amp;'static <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.array.html">N</a>]&gt;;</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p><a href="struct.Family.html" title="struct vise::Family"><code>Family</code></a> with separately specified label names.</p>
+<p>Separately specifying labels allows to not define newtype wrappers for labels. Instead, labels
+(the first type param of <code>LabeledFamily</code>) can be specified as values (e.g., <code>&amp;'static str</code>
+or <code>u8</code>), and the label names are provided separately using the <code>labels = [..]</code> attribute
+with the <a href="derive.Metrics.html" title="derive vise::Metrics"><code>Metrics</code></a> derive macro.</p>
+<ul>
+<li>If there’s a single label, its value type must be specified directly: <code>&amp;'static str</code>.</li>
+<li>If there are several labels, they must be specified as a tuple: <code>(&amp;'static str, u16)</code>.</li>
+<li>The number of labels must match the number of label names and the constant param of <code>LabeledFamily</code>
+(which is set to 1 by default). E.g., for two labels you should use <code>LabeledFamily&lt;_, _, 2&gt;</code>.</li>
+</ul>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2><h3 id="family-with-single-label"><a class="doc-anchor" href="#family-with-single-label">§</a>Family with single label</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>vise::{Counter, LabeledFamily, Metrics};
+
+<span class="attr">#[derive(Debug, Metrics)]
+</span><span class="kw">struct </span>TestMetrics {
+    <span class="attr">#[metrics(labels = [<span class="string">"method"</span>]</span>)]
+    counters: LabeledFamily&lt;<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str, Counter&gt;,
+}
+
+<span class="comment">// `counters` are keyed by a `&amp;str`:
+</span><span class="kw">let </span>metrics = TestMetrics::default();
+metrics.counters[<span class="kw-2">&amp;</span><span class="string">"test"</span>].inc();
+metrics.counters[<span class="kw-2">&amp;</span><span class="string">"another_test"</span>].inc_by(<span class="number">3</span>);
+<span class="comment">// In the encoded metrics, these entries will be mentioned as follows:
+</span><span class="kw">let </span>entries = [
+    <span class="string">r#"counters_total{method="test"} 1"#</span>,
+    <span class="string">r#"counters_total{method="another_test"} 3"#</span>,
+];</code></pre></div>
+<h3 id="family-with-multiple-labels"><a class="doc-anchor" href="#family-with-multiple-labels">§</a>Family with multiple labels</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">const </span>LABELS: [<span class="kw-2">&amp;</span>str; <span class="number">2</span>] = [<span class="string">"method"</span>, <span class="string">"code"</span>];
+<span class="kw">type </span>Labels = (<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str, u16);
+
+<span class="attr">#[derive(Debug, Metrics)]
+</span><span class="kw">struct </span>TestMetrics {
+    <span class="attr">#[metrics(labels = LABELS, buckets = Buckets::LATENCIES)]
+    </span>latencies: LabeledFamily&lt;Labels, Histogram&lt;Duration&gt;, <span class="number">2</span>&gt;,
+    <span class="comment">// ^ note that label names and type can be extracted elsewhere
+</span>}
+
+<span class="kw">let </span>metrics = TestMetrics::default();
+metrics.latencies[<span class="kw-2">&amp;</span>(<span class="string">"call"</span>, <span class="number">200</span>)].observe(Duration::from_millis(<span class="number">25</span>));
+metrics.latencies[<span class="kw-2">&amp;</span>(<span class="string">"send"</span>, <span class="number">502</span>)].observe(Duration::from_secs(<span class="number">1</span>));
+<span class="comment">// In the encoded metrics, these entries will be mentioned as follows:
+</span><span class="kw">let </span>entries = [
+    <span class="string">r#"latencies_sum{method="call",code="200"} 0.025"#</span>,
+    <span class="string">r#"latencies_sum{method="send",code="502"} 1.0"#</span>,
+];</code></pre></div>
+</div></details><h2 id="aliased-type" class="section-header">Aliased Type<a href="#aliased-type" class="anchor">§</a></h2><pre class="rust item-decl"><code>struct LabeledFamily&lt;S, M, const N: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a> = 1&gt; { <span class="comment">/* private fields */</span> }</code></pre><script src="../type.impl/vise/struct.Family.js" data-self-path="vise::wrappers::LabeledFamily" async></script></section></div></main></body></html>

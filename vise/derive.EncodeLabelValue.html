@@ -1,0 +1,57 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Derives the `EncodeLabelValue` trait for a type, which encodes a metric label value."><title>EncodeLabelValue in vise - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-0ce1a80b.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="vise" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0-nightly (2eef47813 2025-05-22)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../static.files/storage-4e99c027.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc derive"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../vise/index.html">vise</a><span class="version">0.3.2</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Encode<wbr>Label<wbr>Value</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#container-attributes" title="Container attributes">Container attributes</a><ul><li><a href="#format" title="`format`"><code>format</code></a></li><li><a href="#rename_all" title="`rename_all`"><code>rename_all</code></a></li></ul></li><li><a href="#variant-attributes" title="Variant attributes">Variant attributes</a><ul><li><a href="#name" title="`name`"><code>name</code></a></li></ul></li><li><a href="#examples" title="Examples">Examples</a><ul><li><a href="#default-format" title="Default format">Default format</a></li><li><a href="#custom-format" title="Custom format">Custom format</a></li><li><a href="#using-rename_all-on-c-style-enum" title="Using `rename_all` on C-style enum">Using <code>rename_all</code> on C-style enum</a></li></ul></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="index.html">In crate vise</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="index.html">vise</a></div><h1>Derive Macro <span class="derive">EncodeLabelValue</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/vise_macros/lib.rs.html#32">Source</a> </span></div><pre class="rust item-decl"><code>#[derive(EncodeLabelValue)]
+{
+    <span class="comment">// Attributes available to this derive:</span>
+    #[metrics]
+}
+</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Derives the <a href="trait@prometheus_client::encoding::EncodeLabelValue"><code>EncodeLabelValue</code></a> trait for a type, which encodes a metric label value.</p>
+<p>The type for which the trait is derived must not have generics (lifetimes, type params or const params).
+The macro can be configured using <code>#[metrics()]</code> attributes.</p>
+<h2 id="container-attributes"><a class="doc-anchor" href="#container-attributes">§</a>Container attributes</h2><h3 id="format"><a class="doc-anchor" href="#format">§</a><code>format</code></h3>
+<p><strong>Type:</strong> string</p>
+<p><strong>Default value:</strong> <code>{}</code></p>
+<p>Specifies the format for the value as used in the <code>format!</code> macro etc. when encoding it to
+a label value. For example, <code>{}</code> means using <a href="https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html" title="trait core::fmt::Display"><code>Display</code></a>.</p>
+<h3 id="rename_all"><a class="doc-anchor" href="#rename_all">§</a><code>rename_all</code></h3>
+<p><strong>Type:</strong> string; one of <code>lowercase</code>, <code>UPPERCASE</code>, <code>camelCase</code>, <code>snake_case</code>, <code>SCREAMING_SNAKE_CASE</code>,
+<code>kebab-case</code>, <code>SCREAMING-KEBAB-CASE</code></p>
+<p>Specifies how enum variant names should be transformed into label values. This attribute
+can only be placed on enums in which all variants don’t have fields (aka C-style enums).
+Mutually exclusive with the <code>format</code> attribute.</p>
+<p>Caveats:</p>
+<ul>
+<li><code>rename_all</code> assumes that original variant names are in <code>PascalCase</code> (i.e., follow Rust naming conventions).</li>
+<li><code>rename_all</code> requires original variant names to consist of ASCII chars.</li>
+<li>Each letter of capitalized acronyms (e.g., “HTTP” in <code>HTTPServer</code>) is treated as a separate word.
+E.g., <code>rename_all = "snake_case"</code> will rename <code>HTTPServer</code> to <code>h_t_t_p_server</code>.
+Note that <a href="https://rust-lang.github.io/rust-clippy/master/index.html#/upper_case_acronyms">it is recommended</a> to not capitalize acronyms (i.e., use <code>HttpServer</code>).</li>
+<li>No spacing is inserted before numbers or other non-letter chars. E.g., <code>rename_all = "snake_case"</code>
+will rename <code>Status500</code> to <code>status500</code>, not to <code>status_500</code>.</li>
+</ul>
+<h2 id="variant-attributes"><a class="doc-anchor" href="#variant-attributes">§</a>Variant attributes</h2><h3 id="name"><a class="doc-anchor" href="#name">§</a><code>name</code></h3>
+<p><strong>Type:</strong> string</p>
+<p>Specifies the name override for a particular enum variant when used with the <code>rename_all</code> attribute
+described above.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2><h3 id="default-format"><a class="doc-anchor" href="#default-format">§</a>Default format</h3>
+<p>Label value using the default <code>Display</code> formatting; note that <code>Display</code> itself is derived.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>derive_more::Display;
+<span class="kw">use </span>vise::EncodeLabelValue;
+
+<span class="attr">#[derive(Debug, Display, EncodeLabelValue)]
+</span><span class="kw">struct </span>Method(<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str);</code></pre></div>
+<h3 id="custom-format"><a class="doc-anchor" href="#custom-format">§</a>Custom format</h3>
+<p>Label value using <code>Hex</code> formatting with <code>0</code> padding and <code>0x</code> prepended.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attr">#[derive(Debug, LowerHex, EncodeLabelValue)]
+#[metrics(format = <span class="string">"0x{:02x}"</span>)]
+</span><span class="kw">struct </span>ResponseType(u8);</code></pre></div>
+<h3 id="using-rename_all-on-c-style-enum"><a class="doc-anchor" href="#using-rename_all-on-c-style-enum">§</a>Using <code>rename_all</code> on C-style enum</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attr">#[derive(Debug, EncodeLabelValue)]
+#[metrics(rename_all = <span class="string">"snake_case"</span>)]
+</span><span class="kw">enum </span>Database {
+    Postgres, <span class="comment">// renamed to "postgres"
+    </span>MySql, <span class="comment">// renamed to "my_sql"
+    </span><span class="attr">#[metrics(name = <span class="string">"rocksdb"</span>)] </span><span class="comment">// explicitly overrides the name
+    </span>RocksDB,
+}</code></pre></div>
+</div></details></section></div></main></body></html>
