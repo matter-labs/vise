@@ -1631,7 +1631,7 @@ dependencies = [
 
 [[package]]
 name = "vise"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "assert_matches",
  "compile-fmt",
@@ -1649,7 +1649,7 @@ dependencies = [
 
 [[package]]
 name = "vise-e2e-tests"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -1665,7 +1665,7 @@ dependencies = [
 
 [[package]]
 name = "vise-exporter"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "doc-comment",
  "http-body-util",
@@ -1682,7 +1682,7 @@ dependencies = [
 
 [[package]]
 name = "vise-macros"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "proc-macro2",
  "quote",
