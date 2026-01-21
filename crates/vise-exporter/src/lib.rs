@@ -1,6 +1,6 @@
 //! Metric exporter based on the `hyper` web server / client.
 //!
-//! An exporter scrapes metrics from a [`Registry`] and allows exporting them to Prometheus by either
+//! An exporter scrapes metrics from a [`Registry`](vise::Registry) and allows exporting them to Prometheus by either
 //! running a web server or pushing to the Prometheus push gateway. An exporter should only be initialized
 //! in applications, not libraries.
 //!
