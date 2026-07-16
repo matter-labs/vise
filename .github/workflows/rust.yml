@@ -2,7 +2,7 @@ name: Rust
 
 on:
   pull_request:
-    branches: [ "*" ]
+    branches: ["*"]
   push:
     branches: ["main"]
 
@@ -26,14 +26,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # actions/checkout@v7
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.msrv }}
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # mozilla-actions/sccache-action@v0.0.9
 
       - name: Build libraries
         run: cargo build --workspace --exclude vise-e2e-tests --lib --all-features
@@ -45,15 +45,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # actions/checkout@v7
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           components: rustfmt, clippy, rust-src
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # mozilla-actions/sccache-action@v0.0.9
 
       - name: Format
         run: cargo fmt --all -- --config imports_granularity=Crate --config group_imports=StdExternalCrate --check
@@ -77,14 +77,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # actions/checkout@v7
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.ui_toolchain }}
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # mozilla-actions/sccache-action@v0.0.9
 
       - name: Run UI tests
         env:
@@ -100,14 +100,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # actions/checkout@v7
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.nightly }}
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # mozilla-actions/sccache-action@v0.0.9
 
       - name: Build libraries
         run: cargo build --workspace --exclude vise-e2e-tests --lib --all-features
@@ -120,7 +120,7 @@ jobs:
           cargo rustdoc -p vise-exporter --all-features -- -D warnings --cfg docsrs
 
       - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4
+        uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # JamesIves/github-pages-deploy-action@v4
         if: github.event_name == 'push' && github.ref_type == 'branch'
         with:
           branch: gh-pages
