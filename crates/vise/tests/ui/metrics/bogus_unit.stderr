@@ -17,7 +17,4 @@ help: the type constructed contains `&'static str` due to the type of the argume
   |                      --------- this argument influences the type of `Some`
 note: tuple variant defined here
  --> $RUST/core/src/option.rs
-  |
-  |     Some(#[stable(feature = "rust1", since = "1.0.0")] T),
-  |     ^^^^
   = note: this error originates in the derive macro `Metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
