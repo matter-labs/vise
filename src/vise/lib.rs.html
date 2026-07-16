@@ -1,0 +1,430 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/vise/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-0ce1a80b.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="vise" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0-nightly (2eef47813 2025-05-22)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../../static.files/src-script-63605ae7.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">vise/</div>lib.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! Metrics handling library based on the `prometheus-client` crate.
+<a href=#2 id=2 data-nosnippet>2</a>//!
+<a href=#3 id=3 data-nosnippet>3</a>//! # Overview
+<a href=#4 id=4 data-nosnippet>4</a>//!
+<a href=#5 id=5 data-nosnippet>5</a>//! - The crate supports defining common metric types ([`Counter`]s, [`Gauge`]s and [`Histogram`]s).
+<a href=#6 id=6 data-nosnippet>6</a>//!   A single metric is represented by an instance of these types; it can be reported using methods
+<a href=#7 id=7 data-nosnippet>7</a>//!   like [`Counter::inc()`], [`Gauge::set()`] or [`Histogram::observe()`].
+<a href=#8 id=8 data-nosnippet>8</a>//! - Metrics can be grouped into a [`Family`]. Essentially, a `Family` is a map in which metrics
+<a href=#9 id=9 data-nosnippet>9</a>//!   are values keyed by a set of labels. See [`EncodeLabelValue`] and [`EncodeLabelSet`] derive macros
+<a href=#10 id=10 data-nosnippet>10</a>//!   for more info on labels.
+<a href=#11 id=11 data-nosnippet>11</a>//! - To define metrics, a group of logically related metrics is grouped into a struct
+<a href=#12 id=12 data-nosnippet>12</a>//!   and the [`Metrics`](trait@Metrics) trait is [derived](macro@Metrics) for it. This resolves
+<a href=#13 id=13 data-nosnippet>13</a>//!   full metric names and records additional metadata, such as help (from doc comments), unit of measurement
+<a href=#14 id=14 data-nosnippet>14</a>//!   and [`Buckets`] for histograms.
+<a href=#15 id=15 data-nosnippet>15</a>//! - Metric groups are registered in a [`Registry`], which then allows to [encode](Registry::encode())
+<a href=#16 id=16 data-nosnippet>16</a>//!   metric data in the OpenMetrics text format. Registration can be automated using the [`register`]
+<a href=#17 id=17 data-nosnippet>17</a>//!   attribute, but it can be manual as well.
+<a href=#18 id=18 data-nosnippet>18</a>//! - In order to allow for metrics computed during scraping, you can use [`Collector`].
+<a href=#19 id=19 data-nosnippet>19</a>//! - To share one or more labels for a group of metrics, wrap them in a [`MetricsFamily`].
+<a href=#20 id=20 data-nosnippet>20</a>//!
+<a href=#21 id=21 data-nosnippet>21</a>//! # Examples
+<a href=#22 id=22 data-nosnippet>22</a>//!
+<a href=#23 id=23 data-nosnippet>23</a>//! ## Defining metrics
+<a href=#24 id=24 data-nosnippet>24</a>//!
+<a href=#25 id=25 data-nosnippet>25</a>//! ```
+<a href=#26 id=26 data-nosnippet>26</a>//! use vise::*;
+<a href=#27 id=27 data-nosnippet>27</a>//! use std::{fmt, time::Duration};
+<a href=#28 id=28 data-nosnippet>28</a>//!
+<a href=#29 id=29 data-nosnippet>29</a>//! /// Metrics defined by the library or application. A single app / lib can define
+<a href=#30 id=30 data-nosnippet>30</a>//! /// multiple metric structs.
+<a href=#31 id=31 data-nosnippet>31</a>//! #[derive(Debug, Clone, Metrics)]
+<a href=#32 id=32 data-nosnippet>32</a>//! #[metrics(prefix = "my_app")]
+<a href=#33 id=33 data-nosnippet>33</a>//! // ^ Prefix added to all field names to get the final metric name (e.g., `my_app_latencies`).
+<a href=#34 id=34 data-nosnippet>34</a>//! pub(crate) struct MyMetrics {
+<a href=#35 id=35 data-nosnippet>35</a>//!     /// Simple counter. Doc comments for the fields will be reported
+<a href=#36 id=36 data-nosnippet>36</a>//!     /// as Prometheus metric descriptions.
+<a href=#37 id=37 data-nosnippet>37</a>//!     pub counter: Counter,
+<a href=#38 id=38 data-nosnippet>38</a>//!     /// Integer-valued gauge. Unit will be reported to Prometheus and will influence metric name
+<a href=#39 id=39 data-nosnippet>39</a>//!     /// by adding the corresponding suffix to it (in this case, `_bytes`).
+<a href=#40 id=40 data-nosnippet>40</a>//!     #[metrics(unit = Unit::Bytes)]
+<a href=#41 id=41 data-nosnippet>41</a>//!     pub gauge: Gauge&lt;u64&gt;,
+<a href=#42 id=42 data-nosnippet>42</a>//!     /// Group of histograms with the "method" label (see the definition below).
+<a href=#43 id=43 data-nosnippet>43</a>//!     /// Each `Histogram` or `Family` of `Histogram`s must define buckets; in this case,
+<a href=#44 id=44 data-nosnippet>44</a>//!     /// we use default buckets for latencies.
+<a href=#45 id=45 data-nosnippet>45</a>//!     #[metrics(buckets = Buckets::LATENCIES)]
+<a href=#46 id=46 data-nosnippet>46</a>//!     pub latencies: Family&lt;Method, Histogram&lt;Duration&gt;&gt;,
+<a href=#47 id=47 data-nosnippet>47</a>//! }
+<a href=#48 id=48 data-nosnippet>48</a>//!
+<a href=#49 id=49 data-nosnippet>49</a>//! /// Isolated metric label. Note the `label` name specification below.
+<a href=#50 id=50 data-nosnippet>50</a>//! #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet, EncodeLabelValue)]
+<a href=#51 id=51 data-nosnippet>51</a>//! #[metrics(label = "method")]
+<a href=#52 id=52 data-nosnippet>52</a>//! pub(crate) struct Method(pub &amp;'static str);
+<a href=#53 id=53 data-nosnippet>53</a>//!
+<a href=#54 id=54 data-nosnippet>54</a>//! // For the isolated metric label to work, you should implement `Display` for it:
+<a href=#55 id=55 data-nosnippet>55</a>//! impl fmt::Display for Method {
+<a href=#56 id=56 data-nosnippet>56</a>//!     fn fmt(&amp;self, formatter: &amp;mut fmt::Formatter&lt;'_&gt;) -&gt; fmt::Result {
+<a href=#57 id=57 data-nosnippet>57</a>//!         write!(formatter, "{}", self.0)
+<a href=#58 id=58 data-nosnippet>58</a>//!     }
+<a href=#59 id=59 data-nosnippet>59</a>//! }
+<a href=#60 id=60 data-nosnippet>60</a>//! ```
+<a href=#61 id=61 data-nosnippet>61</a>//!
+<a href=#62 id=62 data-nosnippet>62</a>//! ## Registering metrics automatically
+<a href=#63 id=63 data-nosnippet>63</a>//!
+<a href=#64 id=64 data-nosnippet>64</a>//! Commonly, metrics can be registered by defining a `static`:
+<a href=#65 id=65 data-nosnippet>65</a>//!
+<a href=#66 id=66 data-nosnippet>66</a>//! ```
+<a href=#67 id=67 data-nosnippet>67</a>//! # use vise::{Gauge, Global, Metrics, MetricsCollection, Registry};
+<a href=#68 id=68 data-nosnippet>68</a>//! #[derive(Debug, Clone, Metrics)]
+<a href=#69 id=69 data-nosnippet>69</a>//! pub(crate) struct MyMetrics {
+<a href=#70 id=70 data-nosnippet>70</a>//! #   pub gauge: Gauge&lt;u64&gt;,
+<a href=#71 id=71 data-nosnippet>71</a>//!     // defined in a previous code sample
+<a href=#72 id=72 data-nosnippet>72</a>//! }
+<a href=#73 id=73 data-nosnippet>73</a>//!
+<a href=#74 id=74 data-nosnippet>74</a>//! #[vise::register]
+<a href=#75 id=75 data-nosnippet>75</a>//! pub(crate) static MY_METRICS: Global&lt;MyMetrics&gt; = Global::new();
+<a href=#76 id=76 data-nosnippet>76</a>//!
+<a href=#77 id=77 data-nosnippet>77</a>//! // All registered metrics can be collected in a `Registry`:
+<a href=#78 id=78 data-nosnippet>78</a>//! let registry: Registry = MetricsCollection::default().collect();
+<a href=#79 id=79 data-nosnippet>79</a>//! // Do something with the `registry`, e.g. create an exporter.
+<a href=#80 id=80 data-nosnippet>80</a>//!
+<a href=#81 id=81 data-nosnippet>81</a>//! fn metered_logic() {
+<a href=#82 id=82 data-nosnippet>82</a>//!     // method logic...
+<a href=#83 id=83 data-nosnippet>83</a>//!     MY_METRICS.gauge.set(42);
+<a href=#84 id=84 data-nosnippet>84</a>//! }
+<a href=#85 id=85 data-nosnippet>85</a>//! ```
+<a href=#86 id=86 data-nosnippet>86</a>//!
+<a href=#87 id=87 data-nosnippet>87</a>//! ## Registering metrics manually
+<a href=#88 id=88 data-nosnippet>88</a>//!
+<a href=#89 id=89 data-nosnippet>89</a>//! It is possible to add metrics manually to a [`Registry`]. As a downside, this approach requires
+<a href=#90 id=90 data-nosnippet>90</a>//! boilerplate to register all necessary metrics in an app and potentially libraries
+<a href=#91 id=91 data-nosnippet>91</a>//! that it depends on.
+<a href=#92 id=92 data-nosnippet>92</a>//!
+<a href=#93 id=93 data-nosnippet>93</a>//! ```
+<a href=#94 id=94 data-nosnippet>94</a>//! # use vise::{Gauge, Metrics, Registry};
+<a href=#95 id=95 data-nosnippet>95</a>//! #[derive(Debug, Clone, Metrics)]
+<a href=#96 id=96 data-nosnippet>96</a>//! pub(crate) struct MyMetrics {
+<a href=#97 id=97 data-nosnippet>97</a>//! #   pub gauge: Gauge&lt;u64&gt;,
+<a href=#98 id=98 data-nosnippet>98</a>//!     // defined in a previous code sample
+<a href=#99 id=99 data-nosnippet>99</a>//! }
+<a href=#100 id=100 data-nosnippet>100</a>//!
+<a href=#101 id=101 data-nosnippet>101</a>//! let mut registry = Registry::empty();
+<a href=#102 id=102 data-nosnippet>102</a>//! let my_metrics = MyMetrics::default();
+<a href=#103 id=103 data-nosnippet>103</a>//! registry.register_metrics(&amp;my_metrics);
+<a href=#104 id=104 data-nosnippet>104</a>//! // Do something with the `registry`, e.g. create an exporter.
+<a href=#105 id=105 data-nosnippet>105</a>//!
+<a href=#106 id=106 data-nosnippet>106</a>//! // After registration, metrics can be moved to logic that reports the metrics.
+<a href=#107 id=107 data-nosnippet>107</a>//! // Note that metric types trivially implement `Clone` to allow sharing
+<a href=#108 id=108 data-nosnippet>108</a>//! // them among multiple components.
+<a href=#109 id=109 data-nosnippet>109</a>//! fn metered_logic(metrics: MyMetrics) {
+<a href=#110 id=110 data-nosnippet>110</a>//!     // method logic...
+<a href=#111 id=111 data-nosnippet>111</a>//!     metrics.gauge.set(42);
+<a href=#112 id=112 data-nosnippet>112</a>//! }
+<a href=#113 id=113 data-nosnippet>113</a>//!
+<a href=#114 id=114 data-nosnippet>114</a>//! metered_logic(my_metrics);
+<a href=#115 id=115 data-nosnippet>115</a>//! ```
+<a href=#116 id=116 data-nosnippet>116</a>
+<a href=#117 id=117 data-nosnippet>117</a></span><span class="comment">// Documentation settings.
+<a href=#118 id=118 data-nosnippet>118</a></span><span class="attr">#![doc(html_root_url = <span class="string">"https://docs.rs/vise/0.3.2"</span>)]
+<a href=#119 id=119 data-nosnippet>119</a></span><span class="comment">// Linter settings.
+<a href=#120 id=120 data-nosnippet>120</a></span><span class="attr">#![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
+<a href=#121 id=121 data-nosnippet>121</a>#![warn(clippy::all, clippy::pedantic)]
+<a href=#122 id=122 data-nosnippet>122</a>#![allow(clippy::must_use_candidate, clippy::module_name_repetitions)]
+<a href=#123 id=123 data-nosnippet>123</a>
+<a href=#124 id=124 data-nosnippet>124</a></span><span class="kw">pub use </span>prometheus_client::{metrics::counter::Counter, registry::Unit};
+<a href=#125 id=125 data-nosnippet>125</a><span class="doccomment">/// Registers a [`Global`] metrics instance or [`Collector`], so that it will be included
+<a href=#126 id=126 data-nosnippet>126</a>/// into registries instantiated using [`MetricsCollection`].
+<a href=#127 id=127 data-nosnippet>127</a>///
+<a href=#128 id=128 data-nosnippet>128</a>/// This macro must be placed on a static item of a type implementing [`CollectToRegistry`].
+<a href=#129 id=129 data-nosnippet>129</a>///
+<a href=#130 id=130 data-nosnippet>130</a>/// # Examples
+<a href=#131 id=131 data-nosnippet>131</a>///
+<a href=#132 id=132 data-nosnippet>132</a>/// ## Usage with global metrics
+<a href=#133 id=133 data-nosnippet>133</a>///
+<a href=#134 id=134 data-nosnippet>134</a>/// ```
+<a href=#135 id=135 data-nosnippet>135</a>/// use vise::{Gauge, Global, Metrics};
+<a href=#136 id=136 data-nosnippet>136</a>///
+<a href=#137 id=137 data-nosnippet>137</a>/// #[derive(Debug, Metrics)]
+<a href=#138 id=138 data-nosnippet>138</a>/// #[metrics(prefix = "test")]
+<a href=#139 id=139 data-nosnippet>139</a>/// pub(crate) struct TestMetrics {
+<a href=#140 id=140 data-nosnippet>140</a>///     gauge: Gauge,
+<a href=#141 id=141 data-nosnippet>141</a>/// }
+<a href=#142 id=142 data-nosnippet>142</a>///
+<a href=#143 id=143 data-nosnippet>143</a>/// #[vise::register]
+<a href=#144 id=144 data-nosnippet>144</a>/// static TEST_METRICS: Global&lt;TestMetrics&gt; = Global::new();
+<a href=#145 id=145 data-nosnippet>145</a>/// ```
+<a href=#146 id=146 data-nosnippet>146</a>///
+<a href=#147 id=147 data-nosnippet>147</a>/// ## Usage with collectors
+<a href=#148 id=148 data-nosnippet>148</a>///
+<a href=#149 id=149 data-nosnippet>149</a>/// ```
+<a href=#150 id=150 data-nosnippet>150</a>/// use vise::{Collector, Gauge, Global, Metrics};
+<a href=#151 id=151 data-nosnippet>151</a>///
+<a href=#152 id=152 data-nosnippet>152</a>/// #[derive(Debug, Metrics)]
+<a href=#153 id=153 data-nosnippet>153</a>/// #[metrics(prefix = "dynamic")]
+<a href=#154 id=154 data-nosnippet>154</a>/// pub(crate) struct DynamicMetrics {
+<a href=#155 id=155 data-nosnippet>155</a>///     gauge: Gauge,
+<a href=#156 id=156 data-nosnippet>156</a>/// }
+<a href=#157 id=157 data-nosnippet>157</a>///
+<a href=#158 id=158 data-nosnippet>158</a>/// #[vise::register]
+<a href=#159 id=159 data-nosnippet>159</a>/// static TEST_COLLECTOR: Collector&lt;DynamicMetrics&gt; = Collector::new();
+<a href=#160 id=160 data-nosnippet>160</a>/// ```
+<a href=#161 id=161 data-nosnippet>161</a></span><span class="kw">pub use </span>vise_macros::register;
+<a href=#162 id=162 data-nosnippet>162</a><span class="doccomment">/// Derives the [`EncodeLabelSet`] trait for a type, which encodes a set of metric labels.
+<a href=#163 id=163 data-nosnippet>163</a>///
+<a href=#164 id=164 data-nosnippet>164</a>/// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
+<a href=#165 id=165 data-nosnippet>165</a>/// The macro can be configured using `#[metrics()]` attributes.
+<a href=#166 id=166 data-nosnippet>166</a>///
+<a href=#167 id=167 data-nosnippet>167</a>/// # Container attributes
+<a href=#168 id=168 data-nosnippet>168</a>///
+<a href=#169 id=169 data-nosnippet>169</a>/// ## `label`
+<a href=#170 id=170 data-nosnippet>170</a>///
+<a href=#171 id=171 data-nosnippet>171</a>/// **Type:** string
+<a href=#172 id=172 data-nosnippet>172</a>///
+<a href=#173 id=173 data-nosnippet>173</a>/// If specified, the type will be treated as a single label with the given name. This covers
+<a href=#174 id=174 data-nosnippet>174</a>/// the common case in which a label set consists of a single label. In this case, the type
+<a href=#175 id=175 data-nosnippet>175</a>/// also needs to implement [`EncodeLabelValue`].
+<a href=#176 id=176 data-nosnippet>176</a>///
+<a href=#177 id=177 data-nosnippet>177</a>/// If this attribute is not specified (which is the default), a container must be a `struct`
+<a href=#178 id=178 data-nosnippet>178</a>/// with named fields. A label with the matching name will be created for each field.
+<a href=#179 id=179 data-nosnippet>179</a>///
+<a href=#180 id=180 data-nosnippet>180</a>/// # Field attributes
+<a href=#181 id=181 data-nosnippet>181</a>///
+<a href=#182 id=182 data-nosnippet>182</a>/// ## `skip`
+<a href=#183 id=183 data-nosnippet>183</a>///
+<a href=#184 id=184 data-nosnippet>184</a>/// **Type:** path to a function with `fn(&amp;FieldType) -&gt; bool` signature
+<a href=#185 id=185 data-nosnippet>185</a>///
+<a href=#186 id=186 data-nosnippet>186</a>/// This attribute works similarly to `skip_serializing_if` in `serde` – if the function it points
+<a href=#187 id=187 data-nosnippet>187</a>/// to returns `true` for the field value, the field will not be encoded as a label.
+<a href=#188 id=188 data-nosnippet>188</a>///
+<a href=#189 id=189 data-nosnippet>189</a>/// `Option` fields are skipped by default if they are `None` (i.e., they use `skip = Option::is_none`).
+<a href=#190 id=190 data-nosnippet>190</a>///
+<a href=#191 id=191 data-nosnippet>191</a>/// [`EncodeLabelSet`]: crate::traits::EncodeLabelSet
+<a href=#192 id=192 data-nosnippet>192</a>///
+<a href=#193 id=193 data-nosnippet>193</a>/// ## `unit`
+<a href=#194 id=194 data-nosnippet>194</a>///
+<a href=#195 id=195 data-nosnippet>195</a>/// **Type:** expression evaluating to [`Unit`]
+<a href=#196 id=196 data-nosnippet>196</a>///
+<a href=#197 id=197 data-nosnippet>197</a>/// Specifies unit of measurement for a label. The unit will be added to the label name as a suffix
+<a href=#198 id=198 data-nosnippet>198</a>/// (e.g., `timeout_seconds` if placed on a field named `timeout`). This is mostly useful for [`Info`] metrics.
+<a href=#199 id=199 data-nosnippet>199</a>///
+<a href=#200 id=200 data-nosnippet>200</a>/// # Examples
+<a href=#201 id=201 data-nosnippet>201</a>///
+<a href=#202 id=202 data-nosnippet>202</a>/// ## Set with a single label
+<a href=#203 id=203 data-nosnippet>203</a>///
+<a href=#204 id=204 data-nosnippet>204</a>/// ```
+<a href=#205 id=205 data-nosnippet>205</a>/// use derive_more::Display;
+<a href=#206 id=206 data-nosnippet>206</a>/// use vise::{EncodeLabelSet, EncodeLabelValue};
+<a href=#207 id=207 data-nosnippet>207</a>///
+<a href=#208 id=208 data-nosnippet>208</a>/// #[derive(Debug, Display, Clone, PartialEq, Eq, Hash)]
+<a href=#209 id=209 data-nosnippet>209</a>/// #[derive(EncodeLabelValue, EncodeLabelSet)]
+<a href=#210 id=210 data-nosnippet>210</a>/// #[metrics(label = "method")]
+<a href=#211 id=211 data-nosnippet>211</a>/// struct Method(&amp;'static str);
+<a href=#212 id=212 data-nosnippet>212</a>/// ```
+<a href=#213 id=213 data-nosnippet>213</a>///
+<a href=#214 id=214 data-nosnippet>214</a>/// ## Set with multiple labels
+<a href=#215 id=215 data-nosnippet>215</a>///
+<a href=#216 id=216 data-nosnippet>216</a>/// ```
+<a href=#217 id=217 data-nosnippet>217</a>/// # use vise::EncodeLabelSet;
+<a href=#218 id=218 data-nosnippet>218</a>/// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet)]
+<a href=#219 id=219 data-nosnippet>219</a>/// struct Labels {
+<a href=#220 id=220 data-nosnippet>220</a>///     /// Label that is skipped when empty.
+<a href=#221 id=221 data-nosnippet>221</a>///     #[metrics(skip = str::is_empty)]
+<a href=#222 id=222 data-nosnippet>222</a>///     name: &amp;'static str,
+<a href=#223 id=223 data-nosnippet>223</a>///     /// Numeric label.
+<a href=#224 id=224 data-nosnippet>224</a>///     num: u8,
+<a href=#225 id=225 data-nosnippet>225</a>/// }
+<a href=#226 id=226 data-nosnippet>226</a>/// ```
+<a href=#227 id=227 data-nosnippet>227</a>///
+<a href=#228 id=228 data-nosnippet>228</a>/// ## Set for info metric
+<a href=#229 id=229 data-nosnippet>229</a>///
+<a href=#230 id=230 data-nosnippet>230</a>/// ```
+<a href=#231 id=231 data-nosnippet>231</a>/// use vise::{EncodeLabelSet, DurationAsSecs, Unit};
+<a href=#232 id=232 data-nosnippet>232</a>/// use std::time::Duration;
+<a href=#233 id=233 data-nosnippet>233</a>///
+<a href=#234 id=234 data-nosnippet>234</a>/// #[derive(Debug, EncodeLabelSet)]
+<a href=#235 id=235 data-nosnippet>235</a>/// struct InfoLabels {
+<a href=#236 id=236 data-nosnippet>236</a>///     /// Simple label.
+<a href=#237 id=237 data-nosnippet>237</a>///     version: &amp;'static str,
+<a href=#238 id=238 data-nosnippet>238</a>///     /// Label with a unit.
+<a href=#239 id=239 data-nosnippet>239</a>///     #[metrics(unit = Unit::Seconds)]
+<a href=#240 id=240 data-nosnippet>240</a>///     request_timeout: DurationAsSecs,
+<a href=#241 id=241 data-nosnippet>241</a>///     /// Another label with a unit.
+<a href=#242 id=242 data-nosnippet>242</a>///     #[metrics(unit = Unit::Bytes)]
+<a href=#243 id=243 data-nosnippet>243</a>///     buffer_capacity: u64,
+<a href=#244 id=244 data-nosnippet>244</a>/// }
+<a href=#245 id=245 data-nosnippet>245</a>///
+<a href=#246 id=246 data-nosnippet>246</a>/// let labels = InfoLabels {
+<a href=#247 id=247 data-nosnippet>247</a>///     version: "0.1.0",
+<a href=#248 id=248 data-nosnippet>248</a>///     request_timeout: Duration::from_millis(100).into(),
+<a href=#249 id=249 data-nosnippet>249</a>///     buffer_capacity: 1_024,
+<a href=#250 id=250 data-nosnippet>250</a>/// };
+<a href=#251 id=251 data-nosnippet>251</a>/// // will be exported as the following labels:
+<a href=#252 id=252 data-nosnippet>252</a>/// // { version="0.1.0", request_timeout_seconds="0.1", buffer_capacity="1024" }
+<a href=#253 id=253 data-nosnippet>253</a>/// ```
+<a href=#254 id=254 data-nosnippet>254</a></span><span class="kw">pub use </span>vise_macros::EncodeLabelSet;
+<a href=#255 id=255 data-nosnippet>255</a><span class="doccomment">/// Derives the [`EncodeLabelValue`] trait for a type, which encodes a metric label value.
+<a href=#256 id=256 data-nosnippet>256</a>///
+<a href=#257 id=257 data-nosnippet>257</a>/// The type for which the trait is derived must not have generics (lifetimes, type params or const params).
+<a href=#258 id=258 data-nosnippet>258</a>/// The macro can be configured using `#[metrics()]` attributes.
+<a href=#259 id=259 data-nosnippet>259</a>///
+<a href=#260 id=260 data-nosnippet>260</a>/// # Container attributes
+<a href=#261 id=261 data-nosnippet>261</a>///
+<a href=#262 id=262 data-nosnippet>262</a>/// ## `format`
+<a href=#263 id=263 data-nosnippet>263</a>///
+<a href=#264 id=264 data-nosnippet>264</a>/// **Type:** string
+<a href=#265 id=265 data-nosnippet>265</a>///
+<a href=#266 id=266 data-nosnippet>266</a>/// **Default value:** `{}`
+<a href=#267 id=267 data-nosnippet>267</a>///
+<a href=#268 id=268 data-nosnippet>268</a>/// Specifies the format for the value as used in the `format!` macro etc. when encoding it to
+<a href=#269 id=269 data-nosnippet>269</a>/// a label value. For example, `{}` means using [`Display`](std::fmt::Display).
+<a href=#270 id=270 data-nosnippet>270</a>///
+<a href=#271 id=271 data-nosnippet>271</a>/// [`EncodeLabelValue`]: trait@prometheus_client::encoding::EncodeLabelValue
+<a href=#272 id=272 data-nosnippet>272</a>///
+<a href=#273 id=273 data-nosnippet>273</a>/// ## `rename_all`
+<a href=#274 id=274 data-nosnippet>274</a>///
+<a href=#275 id=275 data-nosnippet>275</a>/// **Type:** string; one of `lowercase`, `UPPERCASE`, `camelCase`, `snake_case`, `SCREAMING_SNAKE_CASE`,
+<a href=#276 id=276 data-nosnippet>276</a>/// `kebab-case`, `SCREAMING-KEBAB-CASE`
+<a href=#277 id=277 data-nosnippet>277</a>///
+<a href=#278 id=278 data-nosnippet>278</a>/// Specifies how enum variant names should be transformed into label values. This attribute
+<a href=#279 id=279 data-nosnippet>279</a>/// can only be placed on enums in which all variants don't have fields (aka C-style enums).
+<a href=#280 id=280 data-nosnippet>280</a>/// Mutually exclusive with the `format` attribute.
+<a href=#281 id=281 data-nosnippet>281</a>///
+<a href=#282 id=282 data-nosnippet>282</a>/// Caveats:
+<a href=#283 id=283 data-nosnippet>283</a>///
+<a href=#284 id=284 data-nosnippet>284</a>/// - `rename_all` assumes that original variant names are in `PascalCase` (i.e., follow Rust naming conventions).
+<a href=#285 id=285 data-nosnippet>285</a>/// - `rename_all` requires original variant names to consist of ASCII chars.
+<a href=#286 id=286 data-nosnippet>286</a>/// - Each letter of capitalized acronyms (e.g., "HTTP" in `HTTPServer`) is treated as a separate word.
+<a href=#287 id=287 data-nosnippet>287</a>///   E.g., `rename_all = "snake_case"` will rename `HTTPServer` to `h_t_t_p_server`.
+<a href=#288 id=288 data-nosnippet>288</a>///   Note that [it is recommended][clippy-acronyms] to not capitalize acronyms (i.e., use `HttpServer`).
+<a href=#289 id=289 data-nosnippet>289</a>/// - No spacing is inserted before numbers or other non-letter chars. E.g., `rename_all = "snake_case"`
+<a href=#290 id=290 data-nosnippet>290</a>///   will rename `Status500` to `status500`, not to `status_500`.
+<a href=#291 id=291 data-nosnippet>291</a>///
+<a href=#292 id=292 data-nosnippet>292</a>/// # Variant attributes
+<a href=#293 id=293 data-nosnippet>293</a>///
+<a href=#294 id=294 data-nosnippet>294</a>/// ## `name`
+<a href=#295 id=295 data-nosnippet>295</a>///
+<a href=#296 id=296 data-nosnippet>296</a>/// **Type:** string
+<a href=#297 id=297 data-nosnippet>297</a>///
+<a href=#298 id=298 data-nosnippet>298</a>/// Specifies the name override for a particular enum variant when used with the `rename_all` attribute
+<a href=#299 id=299 data-nosnippet>299</a>/// described above.
+<a href=#300 id=300 data-nosnippet>300</a>///
+<a href=#301 id=301 data-nosnippet>301</a>/// [clippy-acronyms]: https://rust-lang.github.io/rust-clippy/master/index.html#/upper_case_acronyms
+<a href=#302 id=302 data-nosnippet>302</a>///
+<a href=#303 id=303 data-nosnippet>303</a>/// # Examples
+<a href=#304 id=304 data-nosnippet>304</a>///
+<a href=#305 id=305 data-nosnippet>305</a>/// ## Default format
+<a href=#306 id=306 data-nosnippet>306</a>///
+<a href=#307 id=307 data-nosnippet>307</a>/// Label value using the default `Display` formatting; note that `Display` itself is derived.
+<a href=#308 id=308 data-nosnippet>308</a>///
+<a href=#309 id=309 data-nosnippet>309</a>/// ```
+<a href=#310 id=310 data-nosnippet>310</a>/// use derive_more::Display;
+<a href=#311 id=311 data-nosnippet>311</a>/// use vise::EncodeLabelValue;
+<a href=#312 id=312 data-nosnippet>312</a>///
+<a href=#313 id=313 data-nosnippet>313</a>/// #[derive(Debug, Display, EncodeLabelValue)]
+<a href=#314 id=314 data-nosnippet>314</a>/// struct Method(&amp;'static str);
+<a href=#315 id=315 data-nosnippet>315</a>/// ```
+<a href=#316 id=316 data-nosnippet>316</a>///
+<a href=#317 id=317 data-nosnippet>317</a>/// ## Custom format
+<a href=#318 id=318 data-nosnippet>318</a>///
+<a href=#319 id=319 data-nosnippet>319</a>/// Label value using `Hex` formatting with `0` padding and `0x` prepended.
+<a href=#320 id=320 data-nosnippet>320</a>///
+<a href=#321 id=321 data-nosnippet>321</a>/// ```
+<a href=#322 id=322 data-nosnippet>322</a>/// # use derive_more::LowerHex;
+<a href=#323 id=323 data-nosnippet>323</a>/// # use vise::EncodeLabelValue;
+<a href=#324 id=324 data-nosnippet>324</a>/// #[derive(Debug, LowerHex, EncodeLabelValue)]
+<a href=#325 id=325 data-nosnippet>325</a>/// #[metrics(format = "0x{:02x}")]
+<a href=#326 id=326 data-nosnippet>326</a>/// struct ResponseType(u8);
+<a href=#327 id=327 data-nosnippet>327</a>/// ```
+<a href=#328 id=328 data-nosnippet>328</a>///
+<a href=#329 id=329 data-nosnippet>329</a>/// ## Using `rename_all` on C-style enum
+<a href=#330 id=330 data-nosnippet>330</a>///
+<a href=#331 id=331 data-nosnippet>331</a>/// ```
+<a href=#332 id=332 data-nosnippet>332</a>/// # use derive_more::LowerHex;
+<a href=#333 id=333 data-nosnippet>333</a>/// # use vise::EncodeLabelValue;
+<a href=#334 id=334 data-nosnippet>334</a>/// #[derive(Debug, EncodeLabelValue)]
+<a href=#335 id=335 data-nosnippet>335</a>/// #[metrics(rename_all = "snake_case")]
+<a href=#336 id=336 data-nosnippet>336</a>/// enum Database {
+<a href=#337 id=337 data-nosnippet>337</a>///     Postgres, // renamed to "postgres"
+<a href=#338 id=338 data-nosnippet>338</a>///     MySql, // renamed to "my_sql"
+<a href=#339 id=339 data-nosnippet>339</a>///     #[metrics(name = "rocksdb")] // explicitly overrides the name
+<a href=#340 id=340 data-nosnippet>340</a>///     RocksDB,
+<a href=#341 id=341 data-nosnippet>341</a>/// }
+<a href=#342 id=342 data-nosnippet>342</a>/// ```
+<a href=#343 id=343 data-nosnippet>343</a></span><span class="kw">pub use </span>vise_macros::EncodeLabelValue;
+<a href=#344 id=344 data-nosnippet>344</a><span class="doccomment">/// Derives the [`Metrics`](trait@Metrics) trait for a type.
+<a href=#345 id=345 data-nosnippet>345</a>///
+<a href=#346 id=346 data-nosnippet>346</a>/// This macro must be placed on a struct with named fields and with no generics (lifetimes, type params
+<a href=#347 id=347 data-nosnippet>347</a>/// or const params). Each field will be registered as metric or a family of metrics.
+<a href=#348 id=348 data-nosnippet>348</a>/// The macro can be configured using `#[metrics()]` attributes.
+<a href=#349 id=349 data-nosnippet>349</a>///
+<a href=#350 id=350 data-nosnippet>350</a>/// # Container attributes
+<a href=#351 id=351 data-nosnippet>351</a>///
+<a href=#352 id=352 data-nosnippet>352</a>/// ## `prefix`
+<a href=#353 id=353 data-nosnippet>353</a>///
+<a href=#354 id=354 data-nosnippet>354</a>/// **Type:** string
+<a href=#355 id=355 data-nosnippet>355</a>///
+<a href=#356 id=356 data-nosnippet>356</a>/// Specifies a common prefix for all metrics defined in the type. If specified, the prefix will
+<a href=#357 id=357 data-nosnippet>357</a>/// be prepended together with a `_` separator to a field name to get the metric name. Note that
+<a href=#358 id=358 data-nosnippet>358</a>/// the metric name may be additionally transformed depending on the unit and metric type.
+<a href=#359 id=359 data-nosnippet>359</a>///
+<a href=#360 id=360 data-nosnippet>360</a>/// # Field attributes
+<a href=#361 id=361 data-nosnippet>361</a>///
+<a href=#362 id=362 data-nosnippet>362</a>/// ## `buckets`
+<a href=#363 id=363 data-nosnippet>363</a>///
+<a href=#364 id=364 data-nosnippet>364</a>/// **Type:** expression evaluating to a type implementing `Into&lt;`[`Buckets`]`&gt;`
+<a href=#365 id=365 data-nosnippet>365</a>///
+<a href=#366 id=366 data-nosnippet>366</a>/// Specifies buckets for a [`Histogram`] or a [`Family`] of `Histogram`s. This attribute is mandatory
+<a href=#367 id=367 data-nosnippet>367</a>/// for these metric types and will result in a compile-time error if used on counters / gauges.
+<a href=#368 id=368 data-nosnippet>368</a>///
+<a href=#369 id=369 data-nosnippet>369</a>/// ## `unit`
+<a href=#370 id=370 data-nosnippet>370</a>///
+<a href=#371 id=371 data-nosnippet>371</a>/// **Type:** expression evaluating to [`Unit`]
+<a href=#372 id=372 data-nosnippet>372</a>///
+<a href=#373 id=373 data-nosnippet>373</a>/// Specifies unit of measurement for a metric. Note that specifying a unit influences the metric naming.
+<a href=#374 id=374 data-nosnippet>374</a>///
+<a href=#375 id=375 data-nosnippet>375</a>/// ## `labels`
+<a href=#376 id=376 data-nosnippet>376</a>///
+<a href=#377 id=377 data-nosnippet>377</a>/// **Type:** expression evaluating to an array `[&amp;'static str; _]`
+<a href=#378 id=378 data-nosnippet>378</a>///
+<a href=#379 id=379 data-nosnippet>379</a>/// Specifies label names for a [`LabeledFamily`]. This attribute is mandatory for [`LabeledFamily`]
+<a href=#380 id=380 data-nosnippet>380</a>/// and will result in a compile-time error if used with other metric types. The number of label names
+<a href=#381 id=381 data-nosnippet>381</a>/// must match the number of label values in the `LabeledFamily` (i.e., its type).
+<a href=#382 id=382 data-nosnippet>382</a>///
+<a href=#383 id=383 data-nosnippet>383</a>/// # Examples
+<a href=#384 id=384 data-nosnippet>384</a>///
+<a href=#385 id=385 data-nosnippet>385</a>/// See crate-level docs and other crate docs for the examples of usage.
+<a href=#386 id=386 data-nosnippet>386</a></span><span class="kw">pub use </span>vise_macros::Metrics;
+<a href=#387 id=387 data-nosnippet>387</a>
+<a href=#388 id=388 data-nosnippet>388</a><span class="kw">pub use crate</span>::{
+<a href=#389 id=389 data-nosnippet>389</a>    buckets::Buckets,
+<a href=#390 id=390 data-nosnippet>390</a>    builder::{BuildMetric, MetricBuilder},
+<a href=#391 id=391 data-nosnippet>391</a>    collector::{BeforeScrapeError, Collector},
+<a href=#392 id=392 data-nosnippet>392</a>    format::Format,
+<a href=#393 id=393 data-nosnippet>393</a>    metrics::{Global, Metrics, MetricsFamily},
+<a href=#394 id=394 data-nosnippet>394</a>    registry::{
+<a href=#395 id=395 data-nosnippet>395</a>        CollectToRegistry, MetricsCollection, MetricsVisitor, RegisteredDescriptors, Registry,
+<a href=#396 id=396 data-nosnippet>396</a>        METRICS_REGISTRATIONS,
+<a href=#397 id=397 data-nosnippet>397</a>    },
+<a href=#398 id=398 data-nosnippet>398</a>    wrappers::{
+<a href=#399 id=399 data-nosnippet>399</a>        DurationAsSecs, Family, Gauge, GaugeGuard, Histogram, Info, LabelWithUnit, LabeledFamily,
+<a href=#400 id=400 data-nosnippet>400</a>        LatencyObserver, LazyItem, SetInfoError,
+<a href=#401 id=401 data-nosnippet>401</a>    },
+<a href=#402 id=402 data-nosnippet>402</a>};
+<a href=#403 id=403 data-nosnippet>403</a>
+<a href=#404 id=404 data-nosnippet>404</a><span class="attr">#[doc(hidden)] </span><span class="comment">// only used by the proc macros
+<a href=#405 id=405 data-nosnippet>405</a></span><span class="kw">pub mod </span>_reexports {
+<a href=#406 id=406 data-nosnippet>406</a>    <span class="kw">pub use </span>ctor::ctor;
+<a href=#407 id=407 data-nosnippet>407</a>    <span class="kw">pub use </span>prometheus_client::{encoding, metrics::TypedMetric};
+<a href=#408 id=408 data-nosnippet>408</a>}
+<a href=#409 id=409 data-nosnippet>409</a><span class="attr">#[doc(hidden)] </span><span class="comment">// only used by the proc macros
+<a href=#410 id=410 data-nosnippet>410</a></span><span class="kw">pub mod </span>_private {
+<a href=#411 id=411 data-nosnippet>411</a>    <span class="kw">pub use </span><span class="kw">crate</span>::format::EncodingContext;
+<a href=#412 id=412 data-nosnippet>412</a>}
+<a href=#413 id=413 data-nosnippet>413</a>
+<a href=#414 id=414 data-nosnippet>414</a><span class="kw">mod </span>buckets;
+<a href=#415 id=415 data-nosnippet>415</a><span class="kw">mod </span>builder;
+<a href=#416 id=416 data-nosnippet>416</a><span class="kw">mod </span>collector;
+<a href=#417 id=417 data-nosnippet>417</a><span class="kw">pub mod </span>descriptors;
+<a href=#418 id=418 data-nosnippet>418</a><span class="kw">mod </span>encoding;
+<a href=#419 id=419 data-nosnippet>419</a><span class="kw">mod </span>format;
+<a href=#420 id=420 data-nosnippet>420</a><span class="kw">mod </span>metrics;
+<a href=#421 id=421 data-nosnippet>421</a><span class="kw">mod </span>registry;
+<a href=#422 id=422 data-nosnippet>422</a><span class="attr">#[cfg(test)]
+<a href=#423 id=423 data-nosnippet>423</a></span><span class="kw">mod </span>tests;
+<a href=#424 id=424 data-nosnippet>424</a><span class="kw">pub mod </span>traits;
+<a href=#425 id=425 data-nosnippet>425</a><span class="attr">#[doc(hidden)]
+<a href=#426 id=426 data-nosnippet>426</a></span><span class="kw">pub mod </span>validation;
+<a href=#427 id=427 data-nosnippet>427</a><span class="kw">mod </span>wrappers;
+<a href=#428 id=428 data-nosnippet>428</a>
+<a href=#429 id=429 data-nosnippet>429</a><span class="attr">#[cfg(doctest)]
+<a href=#430 id=430 data-nosnippet>430</a></span><span class="macro">doc_comment::doctest!</span>(<span class="string">"../README.md"</span>);</code></pre></div></section></main></body></html>

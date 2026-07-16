@@ -1,0 +1,101 @@
+name: Rust
+
+on:
+  pull_request:
+    branches: [ "*" ]
+  push:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: "always"
+  CARGO_INCREMENTAL: "0"
+  RUSTC_WRAPPER: "sccache"
+  SCCACHE_GHA_ENABLED: "true"
+  # Minimum supported Rust version.
+  msrv: 1.79.0
+  # Nightly Rust necessary for building docs.
+  nightly: nightly-2025-05-23
+
+jobs:
+  build-msrv:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.msrv }}
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Build libraries
+        run: cargo build --workspace --exclude vise-e2e-tests --lib --all-features
+      - name: Build exporter (no features)
+        run: cargo build -p vise-exporter --no-default-features --lib
+
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy, rust-src
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Format
+        run: cargo fmt --all -- --config imports_granularity=Crate --config group_imports=StdExternalCrate --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      - name: Clippy exporter (no features)
+        run: cargo clippy -p vise-exporter --no-default-features --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --workspace --all-features --all-targets
+      - name: Run tests (exporter, no features)
+        run: cargo test -p vise-exporter --no-default-features --all-targets
+      - name: Run doc tests
+        run: cargo test --workspace --all-features --doc
+
+  build-nightly:
+    needs:
+      - build
+      - build-msrv
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.nightly }}
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Build libraries
+        run: cargo build --workspace --exclude vise-e2e-tests --lib --all-features
+
+      - name: Build docs
+        run: |
+          cargo clean --doc && \
+          cargo rustdoc -p vise-macros --all-features -- -D warnings && \
+          cargo rustdoc -p vise --all-features -- -D warnings && \
+          cargo rustdoc -p vise-exporter --all-features -- -D warnings --cfg docsrs
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        with:
+          branch: gh-pages
+          folder: target/doc
+          single-commit: true
