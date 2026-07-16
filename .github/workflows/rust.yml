@@ -95,6 +95,7 @@ jobs:
     needs:
       - build
       - build-msrv
+      - ui-tests
     runs-on: ubuntu-latest
     permissions:
       contents: write
