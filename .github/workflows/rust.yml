@@ -15,6 +15,10 @@ env:
   msrv: 1.79.0
   # Nightly Rust necessary for building docs.
   nightly: nightly-2025-05-23
+  # Pinned toolchain for UI (trybuild) tests. Their expected output is tied to the exact `rustc`
+  # diagnostics, which change between releases, so these tests must run on a fixed version. Bump
+  # this together with the `*.stderr` snapshots under `crates/vise/tests/ui/`.
+  ui_toolchain: 1.97.0
 
 jobs:
   build-msrv:
@@ -64,6 +68,28 @@ jobs:
         run: cargo test -p vise-exporter --no-default-features --all-targets
       - name: Run doc tests
         run: cargo test --workspace --all-features --doc
+
+  # UI (trybuild) tests are gated behind `VISE_UI_TESTS` and pinned to a single toolchain because
+  # their expected output depends on exact `rustc` diagnostics, which drift across releases. The
+  # regular `build` job runs on `stable` and therefore skips them.
+  ui-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.ui_toolchain }}
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Run UI tests
+        env:
+          VISE_UI_TESTS: "1"
+        run: cargo test -p vise --test integration
 
   build-nightly:
     needs:

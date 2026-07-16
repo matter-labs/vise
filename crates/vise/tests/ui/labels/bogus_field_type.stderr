@@ -1,10 +1,10 @@
-error[E0277]: the trait bound `Vec<String>: EncodeLabelValue` is not satisfied
+error[E0277]: the trait bound `Vec<String>: vise::_reexports::encoding::EncodeLabelValue` is not satisfied
  --> tests/ui/labels/bogus_field_type.rs:5:5
   |
 5 |     method: Vec<String>,
-  |     ^^^^^^ the trait `EncodeLabelValue` is not implemented for `Vec<String>`
+  |     ^^^^^^ the trait `vise::_reexports::encoding::EncodeLabelValue` is not implemented for `Vec<String>`
   |
-  = help: the following other types implement trait `EncodeLabelValue`:
+  = help: the following other types implement trait `vise::_reexports::encoding::EncodeLabelValue`:
             &String
             &str
             Arc<T>
