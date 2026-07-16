@@ -28,6 +28,3 @@ skip = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-
-[graph]
-exclude-dev = true
