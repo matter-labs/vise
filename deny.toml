@@ -21,8 +21,17 @@ allow = [
 # Lint level for when multiple versions of the same crate are detected
 multiple-versions = "deny"
 # Certain crates/versions that will be skipped when doing duplicate detection.
+# The `cargo-deny` CI job removes `Cargo.lock` and resolves dependencies from scratch, so entries
+# here cover both that resolution and the committed lockfile; an `unmatched-skip` warning means an
+# entry is only needed by one of the two, and is not fatal.
 skip = [
   { name = "windows-sys", version = "^0.60" },
+  # The ecosystem is mid-migration to `syn` 3: `serde_derive`, `tokio-macros` and `displaydoc` are
+  # on 3, while ~10 other transitive proc-macro crates (`tracing-attributes`, `openssl-macros`,
+  # `prometheus-client-derive-encode`, `ctor`, `wasm-bindgen-macro-support`, `zerovec-derive`, …)
+  # are still on 2 in their latest releases. Bounded so that only the current, advisory-clean 2.x
+  # line is tolerated — an older `syn` 2 creeping in still fails the check.
+  { name = "syn", version = ">=2.0.119, <3" },
 ]
 
 [sources]
