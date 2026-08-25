@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.3](https://github.com/matter-labs/vise/compare/v0.3.2...v0.3.3) (2026-08-25)
+
+
+### Features
+
+* add support for custom registry with labels and prefixes ([#44](https://github.com/matter-labs/vise/issues/44)) ([73c6543](https://github.com/matter-labs/vise/commit/73c654303d8190023cf30034d627b74cf3101b23))
+* More bucket functionality ([#42](https://github.com/matter-labs/vise/issues/42)) ([02eb01d](https://github.com/matter-labs/vise/commit/02eb01d10349a82aad09ff4e113ac3bb75e836db))
+
+
+### Bug Fixes
+
+* pin toolchain for trybuild UI tests to stop diagnostic drift and bump package versions to fix failing cargo deny ([#51](https://github.com/matter-labs/vise/issues/51)) ([7883892](https://github.com/matter-labs/vise/commit/788389215cbb56b1c6ce9e7c7e5d4c1164067aac))
+
 ## [0.3.2](https://github.com/matter-labs/vise/compare/v0.3.1...v0.3.2) (2025-06-18)
 
 
